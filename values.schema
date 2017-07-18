@@ -1,0 +1,47 @@
+type: object
+properties:
+  paths:
+    type: object
+    properties:
+      outputDir:
+        type: string
+      terraformTemplatePath:
+        type: string
+      kopsTemplatePath:
+        type: string
+      sshPublicKeyPath:
+        type: string
+    required: [outputDir, terraformTemplatePath, kopsTemplatePath, sshPublicKeyPath]
+  clusterConfig:
+    type: object
+    properties:
+      FullyQualifiedName:
+        type: string
+      ShortName:
+        type: string
+      ConfigBaseURL:
+        type: string
+      AWSRegion:
+        type: string
+      AWSAZ1:
+        type: string
+      MasterMachineType:
+        type: string
+      MasterMinNumber:
+        type: number
+      MasterMaxNumber:
+        type: number
+      NodeMachineType:
+        type: string
+      NodeMaxNumber:
+        type: number
+      NodeMinNumber:
+        type: number
+      BastionMachineType:
+        type: string
+      BastionMaxNumber:
+        type: number
+      BastionMinNumber:
+        type: number
+    required: [FullyQualifiedName, ShortName, ConfigBaseURL, AWSRegion, AWSAZ1, MasterMachineType, MasterMinNumber, MasterMaxNumber, NodeMachineType, NodeMinNumber, NodeMaxNumber, BastionMachineType, BastionMaxNumber, BastionMinNumber]
+required: [paths, clusterConfig]

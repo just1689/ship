@@ -1,0 +1,222 @@
+provider "aws" {
+  region = "{{AWSRegion}}"
+}
+
+resource "aws_vpc" "{{ShortName}}" {
+  cidr_block           = "172.20.0.0/16"
+  enable_dns_hostnames = true
+  enable_dns_support   = true
+
+  tags = {
+    KubernetesCluster                                   = "{{ShortName}}"
+    Name                                                = "{{ShortName}}"
+    "kubernetes.io/cluster/{{ShortName}}" = "owned"
+  }
+}
+
+resource "aws_internet_gateway" "{{ShortName}}" {
+  vpc_id = "${aws_vpc.{{ShortName}}.id}"
+
+  tags = {
+    KubernetesCluster = "{{ShortName}}"
+    Name              = "{{ShortName}}"
+  }
+}
+
+resource "aws_vpc_dhcp_options" "{{ShortName}}" {
+  domain_name         = "{{AWSRegion}}.compute.internal"
+  domain_name_servers = ["AmazonProvidedDNS"]
+
+  tags = {
+    KubernetesCluster = "{{ShortName}}"
+    Name              = "{{ShortName}}"
+  }
+}
+
+resource "aws_vpc_dhcp_options_association" "{{ShortName}}" {
+  vpc_id          = "${aws_vpc.{{ShortName}}.id}"
+  dhcp_options_id = "${aws_vpc_dhcp_options.{{ShortName}}.id}"
+}
+
+resource "aws_subnet" "nodes-{{AWSRegion}}{{AWSAZ1}}" {
+  vpc_id            = "${aws_vpc.{{ShortName}}.id}"
+  cidr_block        = "172.20.32.0/19"
+  availability_zone = "{{AWSRegion}}{{AWSAZ1}}"
+
+  tags = {
+    KubernetesCluster                                   = "{{ShortName}}"
+    Name                                                = "nodes-{{AWSRegion}}{{AWSAZ1}}"
+    "kubernetes.io/cluster/{{ShortName}}" = "owned"
+  }
+}
+
+resource "aws_subnet" "public-{{AWSRegion}}{{AWSAZ1}}" {
+  vpc_id            = "${aws_vpc.{{ShortName}}.id}"
+  cidr_block        = "172.20.0.0/22"
+  availability_zone = "{{AWSRegion}}{{AWSAZ1}}"
+
+  tags = {
+    KubernetesCluster                                   = "{{ShortName}}"
+    Name                                                = "public-{{AWSRegion}}{{AWSAZ1}}"
+    "kubernetes.io/cluster/{{ShortName}}" = "owned"
+  }
+}
+
+resource "aws_eip" "nat-gateway" {
+  vpc = true
+}
+
+resource "aws_nat_gateway" "public-{{AWSRegion}}{{AWSAZ1}}" {
+  allocation_id = "${aws_eip.nat-gateway.id}"
+  subnet_id     = "${aws_subnet.public-{{AWSRegion}}{{AWSAZ1}}.id}"
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = "${aws_vpc.{{ShortName}}.id}"
+
+  tags = {
+    KubernetesCluster = "{{ShortName}}"
+    Name              = "public"
+  }
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = "${aws_vpc.{{ShortName}}.id}"
+
+  tags = {
+    KubernetesCluster = "{{ShortName}}"
+    Name              = "private"
+  }
+}
+
+resource "aws_route_table_association" "nodes-{{AWSRegion}}{{AWSAZ1}}" {
+  subnet_id      = "${aws_subnet.nodes-{{AWSRegion}}{{AWSAZ1}}.id}"
+  route_table_id = "${aws_route_table.private.id}"
+}
+
+resource "aws_route_table_association" "public-{{AWSRegion}}{{AWSAZ1}}" {
+  subnet_id      = "${aws_subnet.public-{{AWSRegion}}{{AWSAZ1}}.id}"
+  route_table_id = "${aws_route_table.public.id}"
+}
+
+resource "aws_route" "public" {
+  route_table_id         = "${aws_route_table.public.id}"
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = "${aws_internet_gateway.{{ShortName}}.id}"
+}
+
+resource "aws_route" "private" {
+  route_table_id         = "${aws_route_table.private.id}"
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = "${aws_nat_gateway.public-{{AWSRegion}}{{AWSAZ1}}.id}"
+}
+
+resource "aws_network_acl" "private-subnets" {
+  vpc_id      = "${aws_vpc.{{ShortName}}.id}"
+  subnet_ids  = ["${aws_subnet.nodes-{{AWSRegion}}{{AWSAZ1}}.id}"]
+
+  ingress {
+    protocol = "tcp"
+    rule_no  = 100
+    action = "allow"
+    cidr_block = "172.20.0.0/22"
+    from_port = 22
+    to_port = 22
+  }
+  ingress {
+    protocol = "tcp"
+    rule_no  = 101
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 1024
+    to_port = 65535
+  }
+  ingress {
+    protocol = "tcp"
+    rule_no  = 102
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 443
+    to_port = 443
+  }
+  egress {
+    protocol = "tcp"
+    rule_no  = 100
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 1024
+    to_port = 65535
+  }
+  egress {
+    protocol = "tcp"
+    rule_no  = 101
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 443
+    to_port = 443
+  }
+
+  tags = {
+    KubernetesCluster = "{{ShortName}}"
+    Name              = "Private Subnets"
+  }
+}
+
+resource "aws_network_acl" "public-subnets" {
+  vpc_id      = "${aws_vpc.{{ShortName}}.id}"
+  subnet_ids  = ["${aws_subnet.public-{{AWSRegion}}{{AWSAZ1}}.id}"]
+
+  ingress {
+    protocol = "tcp"
+    rule_no  = 100
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 22
+    to_port = 22
+  }
+  ingress {
+    protocol = "tcp"
+    rule_no  = 101
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 443
+    to_port = 443
+  }
+  ingress {
+    protocol = "tcp"
+    rule_no  = 102
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 1024
+    to_port = 65535
+  }
+  egress {
+    protocol = "tcp"
+    rule_no  = 100
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 1024
+    to_port = 65535
+  }
+  egress {
+    protocol = "tcp"
+    rule_no  = 101
+    action = "allow"
+    cidr_block = "172.20.0.0/16"
+    from_port = 22
+    to_port = 22
+  }
+  egress {
+    protocol = "tcp"
+    rule_no  = 102
+    action = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port = 443
+    to_port = 443
+  }
+
+  tags = {
+    KubernetesCluster = "{{ShortName}}"
+    Name              = "Public Subnets"
+  }
+}

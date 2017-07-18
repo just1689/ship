@@ -1,0 +1,20 @@
+paths:
+  outputDir: .
+  terraformTemplatePath: templates/networking.tf.template
+  kopsTemplatePath: templates/kops.yaml.template
+  sshPublicKeyPath: /path/to/ssh/key/id_rsa.pub
+clusterConfig:
+  FullyQualifiedName: mycluster.mycompany.com
+  ShortName: mycluster
+  ConfigBaseURL: s3://mycompany-kops-config
+  AWSRegion: eu-west-2
+  AWSAZ1: a
+  MasterMachineType: t2.small
+  MasterMinNumber: 2
+  MasterMaxNumber: 2
+  NodeMachineType: m4.large
+  NodeMaxNumber: 3
+  NodeMinNumber: 3
+  BastionMachineType: t2.micro
+  BastionMaxNumber: 1
+  BastionMinNumber: 1
