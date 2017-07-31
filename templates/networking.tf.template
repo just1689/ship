@@ -8,9 +8,7 @@ resource "aws_vpc" "{{ShortName}}" {
   enable_dns_support   = true
 
   tags = {
-    KubernetesCluster                                   = "{{FullyQualifiedName}}"
-    Name                                                = "{{FullyQualifiedName}}"
-    "kubernetes.io/cluster/{{FullyQualifiedName}}" = "owned"
+    Name              = "{{FullyQualifiedName}}"
   }
 }
 
@@ -28,7 +26,6 @@ resource "aws_vpc_dhcp_options" "{{ShortName}}" {
   domain_name_servers = ["AmazonProvidedDNS"]
 
   tags = {
-    KubernetesCluster = "{{FullyQualifiedName}}"
     Name              = "{{FullyQualifiedName}}"
   }
 }
