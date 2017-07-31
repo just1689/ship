@@ -43,5 +43,29 @@ properties:
         type: number
       BastionMinNumber:
         type: number
-    required: [FullyQualifiedName, ShortName, ConfigBaseURL, AWSRegion, AWSAZ1, MasterMachineType, MasterMinNumber, MasterMaxNumber, NodeMachineType, NodeMinNumber, NodeMaxNumber, BastionMachineType, BastionMaxNumber, BastionMinNumber]
+      KubernetesVersion:
+        type: string
+    required: [FullyQualifiedName, ShortName, ConfigBaseURL, AWSRegion, AWSAZ1, MasterMachineType, MasterMinNumber, MasterMaxNumber, NodeMachineType, NodeMinNumber, NodeMaxNumber, BastionMachineType, BastionMaxNumber, BastionMinNumber, KubernetesVersion]
+  chartRepos:
+    type: array
+    items:
+      type: object
+      properties:
+        name:
+          type: string
+        url:
+          type: string
+  charts:
+    type: array
+    items:
+      type: object
+      properties:
+        name:
+          type: string
+        release:
+          type: string
+        namespace:
+          type: string
+        overrides:
+          type: string
 required: [paths, clusterConfig]

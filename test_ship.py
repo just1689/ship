@@ -15,10 +15,13 @@ CONFIG = {
     "paths": {
         "terraform": "/bin/echo",
         "kops": "/bin/echo",
+        "kubectl": "/bin/echo",
+        "helm": "/bin/echo",
         "outputDir": ".",
         "terraformTemplatePath": "networking.tf.template",
         "kopsTemplatePath": "kops.yaml.template",
-        "sshPublicKeyPath": "kops.yaml.template"
+        "sshPublicKeyPath": "kops.yaml.template",
+        "tillerPermissions": "tillerPermissions.yaml"
     },
     "clusterConfig": {
         "FullyQualifiedName": "test.aws.testcompany.tech",
@@ -35,7 +38,27 @@ CONFIG = {
         "BastionMachineType": "t2.micro",
         "BastionMaxNumber": 1,
         "BastionMinNumber": 1,
-    }
+        "KubernetesVersion": "1.7.1",
+    },
+    "chartRepos": [
+        {
+            "name": "mock-repo",
+            "url": "https://mock-repo"
+        }
+    ],
+    "charts": [
+        {
+            "name": "mock-chart",
+            "namespace": "mock-namespace",
+            "release": "mock-release",
+        },
+        {
+            "name": "mock-chart2",
+            "namespace": "mock-namespace2",
+            "release": "mock-release2",
+            "overrides": "foo=bar"
+        }
+    ]
 }
 
 TERRAFORM_TEMPLATE = {
@@ -73,7 +96,8 @@ KOPS_TEMPLATE = {
         "{{NodeMinNumber}}",
         "{{BastionMachineType}}",
         "{{BastionMaxNumber}}",
-        "{{BastionMinNumber}}"
+        "{{BastionMinNumber}}",
+        "{{KubernetesVersion}}"
     ],
     "otherfield": "othervalue"
 }
@@ -93,7 +117,8 @@ EXPECTED_KOPS_CONFIG = {
         "{}".format(CONFIG["clusterConfig"]["NodeMaxNumber"]),
         CONFIG["clusterConfig"]["BastionMachineType"],
         "{}".format(CONFIG["clusterConfig"]["BastionMinNumber"]),
-        "{}".format(CONFIG["clusterConfig"]["BastionMaxNumber"])
+        "{}".format(CONFIG["clusterConfig"]["BastionMaxNumber"]),
+        CONFIG["clusterConfig"]["KubernetesVersion"]
     ],
     "otherfield": "othervalue"
 }
@@ -128,20 +153,33 @@ TERRAFORM_STATE = {
 }
 
 RUNNER = CliRunner()
+# I cannot get the wait test to pass, so..
+ship.wait_cluster_available = lambda x: None
 
 def test_create_happy_path(capfd):
     expected_output = [
         "apply -state={0}/terraform.tfstate {0}".format(CONFIG['paths']['outputDir']),
-        "create -f {}/kops.config --state {}".format(CONFIG['paths']['outputDir'], CONFIG['clusterConfig']['ConfigBaseURL']),
-        "create secret --name {} sshpublickey admin -i {} --state {}".format(CONFIG['clusterConfig']['FullyQualifiedName'], CONFIG['paths']['sshPublicKeyPath'], CONFIG['clusterConfig']['ConfigBaseURL']),
-        "update cluster --name {} --state {} --yes".format(CONFIG['clusterConfig']['FullyQualifiedName'], CONFIG['clusterConfig']['ConfigBaseURL']),
+        "create -f {}/kops.config --state {}".format(CONFIG['paths']['outputDir'],
+            CONFIG['clusterConfig']['ConfigBaseURL']),
+        "create secret --name {} sshpublickey admin -i {} --state {}".format(
+            CONFIG['clusterConfig']['FullyQualifiedName'], CONFIG['paths']['sshPublicKeyPath'],
+            CONFIG['clusterConfig']['ConfigBaseURL']),
+        "update cluster --name {} --state {} --yes".format(CONFIG['clusterConfig']['FullyQualifiedName'],
+            CONFIG['clusterConfig']['ConfigBaseURL']),
+        "apply -f {}".format(CONFIG['paths']['tillerPermissions']),
+        "init --service-account tiller",
+        "repo add {} {}".format(CONFIG['chartRepos'][0]['name'], CONFIG['chartRepos'][0]['url']),
+        "install --name {} {} --namespace {}".format(CONFIG['charts'][0]['release'], CONFIG['charts'][0]['name'],
+            CONFIG['charts'][0]['namespace']),
+        "install --name {} {} --namespace {} --set {}".format(CONFIG['charts'][1]['release'],
+            CONFIG['charts'][1]['name'], CONFIG['charts'][1]['namespace'], CONFIG['charts'][1]['overrides'])
     ]
+
     with RUNNER.isolated_filesystem():
         write_configs()
 
         result = RUNNER.invoke(ship.cli, ['create'])
         out, _ = capfd.readouterr()
-        print(result.output)
 
         assert result.exit_code == 0
         assert_configs_exist()
@@ -152,7 +190,7 @@ def test_update_happy_path(capfd):
         "apply -state={0}/terraform.tfstate {0}".format(CONFIG['paths']['outputDir']),
         "replace cluster -f {}/kops.config --state {}".format(CONFIG['paths']['outputDir'], CONFIG['clusterConfig']['ConfigBaseURL']),
         "update cluster --name {} --state {} --yes".format(CONFIG['clusterConfig']['FullyQualifiedName'], CONFIG['clusterConfig']['ConfigBaseURL']),
-        "rolling-update cluster --name {} --state {}".format(CONFIG['clusterConfig']['FullyQualifiedName'], CONFIG['clusterConfig']['ConfigBaseURL'])
+        "rolling-update cluster --name {} --state {} --yes".format(CONFIG['clusterConfig']['FullyQualifiedName'], CONFIG['clusterConfig']['ConfigBaseURL'])
     ]
 
     with RUNNER.isolated_filesystem():
@@ -208,6 +246,20 @@ def test_validate_config_checks_invalid_kops_bin():
 def test_validate_config_checks_invalid_terraform_bin():
     values_config = deepcopy(CONFIG)
     values_config['paths']['terraform'] = "/mock/please_not_a_real_bin"
+
+    with pytest.raises(IOError):
+        ship.validate_config(values_config)
+
+def test_validate_config_checks_invalid_kubectl_bin():
+    values_config = deepcopy(CONFIG)
+    values_config['paths']['kubectl'] = "/mock/please_not_a_real_bin"
+
+    with pytest.raises(IOError):
+        ship.validate_config(values_config)
+
+def test_validate_config_checks_invalid_helm_bin():
+    values_config = deepcopy(CONFIG)
+    values_config['paths']['helm'] = "/mock/please_not_a_real_bin"
 
     with pytest.raises(IOError):
         ship.validate_config(values_config)

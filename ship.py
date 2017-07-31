@@ -5,6 +5,7 @@ import os
 import yaml
 import click
 import sys
+import time
 from jinja2 import Environment, FileSystemLoader
 from subprocess import check_call, check_output
 from jsonschema import validate
@@ -15,6 +16,8 @@ env = Environment(
 # Default binary paths (expects them to be in $PATH)
 kops_bin = "kops"
 terraform_bin = "terraform"
+helm_bin = "helm"
+kubectl_bin = "kubectl"
 
 def get_config(config_path):
     with open(config_path, 'r') as kops_values_file:
@@ -38,10 +41,14 @@ def generate_kops_config(cluster_config, kops_template_path, terraform_state_pat
         tf_resources = tf_state['modules'][0]['resources']
 
         region = '{}{}'.format(cluster_config['AWSRegion'], cluster_config['AWSAZ1'])
-        cluster_config['VPCID'] = tf_resources['aws_vpc.'+cluster_config['ShortName']]['primary']['id']
-        cluster_config['PublicNATGatewayID'] = tf_resources['aws_nat_gateway.public-'+region]['primary']['id']
-        cluster_config['NodeSubnetID'] = tf_resources['aws_subnet.nodes-'+region]['primary']['id']
-        cluster_config['PublicSubnetID'] = tf_resources['aws_subnet.public-'+region]['primary']['id']
+        if 'VPCID' not in cluster_config:
+            cluster_config['VPCID'] = tf_resources['aws_vpc.'+cluster_config['ShortName']]['primary']['id']
+        if 'PublicNATGatewayID' not in cluster_config:
+            cluster_config['PublicNATGatewayID'] = tf_resources['aws_nat_gateway.public-'+region]['primary']['id']
+        if 'NodeSubnetID' not in cluster_config:
+            cluster_config['NodeSubnetID'] = tf_resources['aws_subnet.nodes-'+region]['primary']['id']
+        if 'PublicSubnetID' not in cluster_config:
+            cluster_config['PublicSubnetID'] = tf_resources['aws_subnet.public-'+region]['primary']['id']
 
     kops_template = env.get_template(kops_template_path)
     kops_config_path = '{}/kops.config'.format(output_dir)
@@ -71,7 +78,7 @@ def kops_replace_cluster(kops_config_path, state_path):
     check_call([kops_bin, "replace", "cluster", "-f", kops_config_path, "--state", state_path])
 
 def kops_rolling_update(cluster_name, state_path):
-    check_call([kops_bin, "rolling-update", "cluster", "--name", cluster_name, "--state", state_path])
+    check_call([kops_bin, "rolling-update", "cluster", "--name", cluster_name, "--state", state_path, "--yes"])
 
 def kops_destroy_cluster(cluster_name, state_path):
     check_call([kops_bin, "delete", "cluster", cluster_name, "--state", state_path, "--yes"])
@@ -116,6 +123,22 @@ def set_binary_paths(config):
     except Exception as e:
         raise IOError("kops executable not valid: " + str(e)) from e
 
+    if 'helm' in config['paths']:
+        global helm_bin
+        helm_bin = config['paths']['helm']
+    try:
+        check_output([helm_bin, "version", "--client"])
+    except Exception as e:
+        raise IOError("helm executable not valid: " + str(e)) from e
+
+    if 'kubectl' in config['paths']:
+        global kubectl_bin
+        kubectl_bin = config['paths']['kubectl']
+    try:
+        check_output([kubectl_bin, "version", "--client"])
+    except Exception as e:
+        raise IOError("kubectl executable not valid: " + str(e)) from e
+
 @click.group()
 @click.option('--values', default='values.yaml', help='Path to configuration values file')
 @click.pass_context
@@ -140,8 +163,10 @@ def cli(ctx, values):
     ctx.obj['config'] = config
 
 @cli.command()
+@click.option('--cluster-wait-timeout', default=5, help='Number of minutes to wait for the cluster to be ready after cluster launch')
+@click.option('--tiller-wait-timeout', default=5, help='Number of minutes to wait for the helm tiller to be ready after creating it in the cluster')
 @click.pass_context
-def create(ctx):
+def create(ctx, cluster_wait_timeout, tiller_wait_timeout):
     config = ctx.obj['config']
     cluster_config = config['clusterConfig']
     paths = config['paths']
@@ -159,6 +184,76 @@ def create(ctx):
     except Exception as e:
         print("Create cluster failed:", str(e), file=sys.stderr)
         sys.exit(1)
+
+    wait_cluster_available(cluster_wait_timeout)
+    install_components(config, tiller_wait_timeout)
+
+def install_components(config, tiller_wait_timeout):
+    check_call([kubectl_bin, "apply", "-f", config['paths']['tillerPermissions']])
+    check_call([helm_bin, "init", "--service-account", "tiller"])
+
+    wait_tiller_available(tiller_wait_timeout)
+
+    # install chart repos
+    if 'chartRepos' in config:
+        for repo in config['chartRepos']:
+            check_call([helm_bin, "repo", "add", repo['name'], repo['url']])
+
+    # install charts
+    if 'charts' in config:
+        for chart in config['charts']:
+            overrides = chart['overrides'] if 'overrides' in chart else None
+            install_chart(chart['name'], chart['release'], chart['namespace'], overrides)
+
+def install_chart(chart, release_name, namespace, overrides=None):
+    args = [helm_bin, "install", "--name", release_name, chart, "--namespace", namespace]
+    if overrides:
+        args.append("--set")
+        args.append(overrides)
+
+    check_call(args)
+
+def wait_cluster_available(timeout_minutes):
+    timeout_time = time.time() + (timeout_minutes * 60)
+    cluster_available = False
+
+    while not cluster_available and time.time() < timeout_time:
+        try:
+            kubectl_versions = json.loads(check_output([kubectl_bin, "version", "--output", "json"]))
+            if 'serverVersion' in kubectl_versions:
+                cluster_available = True
+        except:
+            # Server isn't available yet, continue trying
+            pass
+
+        if not cluster_available:
+            print("Cluster unavailable. Waiting 30 seconds before retrying.")
+            time.sleep(30)
+
+    if not cluster_available:
+        print("Kubernetes server could not be contacted.", file=sys.stderr)
+        sys.exit(1)
+
+def wait_tiller_available(timeout_minutes):
+    timeout_time = time.time() + (timeout_minutes * 60)
+    tiller_available = False
+
+    while not tiller_available and time.time() < timeout_time:
+        try:
+            check_call([helm_bin, "version", "--server"])
+            tiller_available = True
+        except:
+            # Server isn't available yet, continue trying
+            pass
+
+        if not tiller_available:
+            print("Helm Tiller unavailable. Waiting 15 seconds before retrying.")
+            time.sleep(15)
+
+    if not tiller_available:
+        print("Helm tiller could not be contacted.", file=sys.stderr)
+        sys.exit(1)
+
 
 @cli.command()
 @click.option('--yes', help='Answers "yes" to confirmation prompts"', is_flag=True)
