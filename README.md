@@ -28,3 +28,11 @@ Execute: `./build.sh`
 
 ### Non-Docker
 See the contents of build.sh for what needs to be done.
+
+## Runtime requirements
+* [Kubernetes](https://github.com/kubernetes/kubernetes) cluster in which the components will be installed
+* [Helm](https://github.com/kubernetes/helm) CLI tool in your `$PATH` and corresponding Helm Tiller installed in the Kubernetes cluster (see Helm page for details)
+
+## Usage
+### Install
+Execute: `./ship install`
