@@ -15,7 +15,9 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -59,9 +61,32 @@ var installCmd = &cobra.Command{
 	* CI/CD (Jenkins)
 	* Artifact repository (Nexus)`,
 	Run: func(cmd *cobra.Command, args []string) {
+		checkDependencies()
 		installChartRepo()
 		installCharts(&defaultCharts)
 	},
+}
+
+func checkDependencies() {
+	cmd := "helm"
+	args := []string{"version"}
+
+	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
+		if len(output) == 0 {
+			fmt.Fprintf(os.Stderr, "Helm is not installed. Please see https://github.com/kubernetes/helm for instructions on how to install helm.\n")
+			os.Exit(1)
+		}
+		outputMsg := string(output)
+		if strings.Contains(outputMsg, "Error") {
+			fmt.Fprintf(os.Stderr, fmt.Sprintf(`Helm installation is not healthy:
+
+%s
+Please see https://github.com/kubernetes/helm for instructions on how to install helm correctly.`,
+				outputMsg))
+			os.Exit(1)
+		}
+	}
+
 }
 
 func installChartRepo() {
