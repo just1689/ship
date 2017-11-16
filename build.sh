@@ -7,8 +7,12 @@ if [[ -z "$IMAGE_ID" ]]; then
   docker build -t ship-build .
 fi
 
+echo "Starting build container..."
+docker run --name ship-yard -dt -v "$PWD":/go/src/github.com/SprintHive/ship ship-build cat
+echo "Downloading ship dependencies"
+docker exec ship-yard dep ensure -update
 echo "Compiling project"
-
-docker run --rm -it -v "$PWD":/go/src/github.com/SprintHive/ship ship-build go build -o ship .
+docker exec ship-yard go build -o ship .
+docker rm -f ship-yard
 
 echo "Done! The binary is called 'ship' in the current directory"
