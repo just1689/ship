@@ -15,6 +15,7 @@ package cmd
 
 import (
 	"fmt"
+	"os/exec"
 
 	"github.com/spf13/cobra"
 )
@@ -30,8 +31,23 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("destroy called")
+		removeCharts()
 	},
+}
+
+func removeCharts() {
+	cmd := "helm"
+
+	releases := []string{"inggwdb", "repo", "metricdb", "tracing", "cicd", "logviz", "logcollect", "logdb", "metricviz", "inggw"}
+
+	fmt.Println(fmt.Sprintf("Removing charts: %v", releases))
+	args := []string{"delete", "--purge"}
+
+	args = append(args, releases...)
+
+	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
+		panic(fmt.Sprintf("Failed to remove charts: %v", string(output)))
+	}
 }
 
 func init() {
