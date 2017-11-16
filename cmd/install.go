@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -64,7 +65,19 @@ var installCmd = &cobra.Command{
 		checkDependencies()
 		installChartRepo()
 		installCharts(&defaultCharts)
+		configureGrafana()
 	},
+}
+
+func configureGrafana() {
+	waitDeployReady("metricviz-grafana", 1, "infra")
+
+	cmd := "kubectl"
+	args := []string{"create", "-f", "resources/pod-grafana-configure.yaml"}
+
+	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to configure grafana: %v", string(output)))
+	}
 }
 
 func checkDependencies() {
@@ -96,7 +109,8 @@ func installChartRepo() {
 	args := []string{"repo", "add", "sprinthive-dev-charts", "https://s3.eu-west-2.amazonaws.com/sprinthive-dev-charts"}
 
 	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
-		panic(fmt.Sprintf("Failed to install sprinthive charts: %v", string(output)))
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to install sprinthive charts: %v", string(output)))
+		os.Exit(1)
 	}
 
 	fmt.Println("Successfully installed sprinthive chart repo")
@@ -115,6 +129,28 @@ func installCharts(charts *[]HelmChart) {
 
 		if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
 			panic(fmt.Sprintf("Failed to install chart: %v", string(output)))
+		}
+	}
+}
+
+func waitDeployReady(deployName string, expectedNumberReady int, namespace string) {
+	cmd := "kubectl"
+
+	fmt.Printf("Waiting for readiness of deploy %s\n", deployName)
+	args := []string{"get", "deploy", "-o", "jsonpath=\"{range .items[*]}{@.metadata.name}:{@.status.readyReplicas}{end}\"", "--namespace", namespace}
+
+	deployFinished := false
+	for !deployFinished {
+		time.Sleep(1000 * time.Millisecond)
+
+		output, err := exec.Command(cmd, args...).CombinedOutput()
+		if err != nil {
+			panic(fmt.Sprintf("Failed execute kubectl command to get deploy status: %v", string(output)))
+		}
+
+		if strings.Contains(string(output), fmt.Sprintf("%s:%d", deployName, expectedNumberReady)) {
+			fmt.Println("Deploy is ready!")
+			deployFinished = true
 		}
 	}
 }

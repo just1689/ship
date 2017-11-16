@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: grafana-configure
+spec:
+  containers:
+    - name: grafana-configure
+      image: yauritux/busybox-curl
+      imagePullPolicy: IfNotPresent
+      env:
+        - name: GRAFANA_USER
+          valueFrom:
+            secretKeyRef:
+              name: metricviz-grafana
+              key: grafana-admin-user
+        - name: GRAFANA_PASS
+          valueFrom:
+            secretKeyRef:
+              name: metricviz-grafana
+              key: grafana-admin-password
+        - name: GRAFANA_HOST
+          value: metricviz-grafana
+      command: ["curl"]
+      args:
+        - "http://$(GRAFANA_USER):$(GRAFANA_PASS)@$(GRAFANA_HOST)/api/datasources"
+        - "-XPOST"
+        - "-HContent-Type: application/json"
+        - "-d{\"name\":\"Prometheus\",\"type\":\"prometheus\",\"url\":\"http://metricdb-prometheus-server\",\"access\":\"proxy\",\"isDefault\":true}"
+  restartPolicy: Never
