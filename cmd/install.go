@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,20 +30,21 @@ type HelmChart struct {
 	Namespace   string
 	ReleaseName string
 	Overrides   []string
+	ValuesPath  string
 }
 
 var defaultCharts = []HelmChart{
-	HelmChart{"sprinthive-dev-charts/kong-cassandra", "infra", "inggwdb", []string{"clusterProfile=local"}},
-	HelmChart{"sprinthive-dev-charts/nexus", "infra", "repo", []string{}},
-	HelmChart{"sprinthive-dev-charts/prometheus", "infra", "metricdb", []string{}},
-	HelmChart{"sprinthive-dev-charts/zipkin", "infra", "tracing", []string{}},
-	HelmChart{"sprinthive-dev-charts/jenkins", "infra", "cicd", []string{}},
-	HelmChart{"sprinthive-dev-charts/kibana", "infra", "logviz", []string{}},
-	HelmChart{"sprinthive-dev-charts/fluent-bit", "infra", "logcollect", []string{}},
-	HelmChart{"sprinthive-dev-charts/elasticsearch", "infra", "logdb", []string{"ClusterProfile=local"}},
-	HelmChart{"stable/grafana", "infra", "metricviz", []string{}},
+	HelmChart{"sprinthive-dev-charts/kong-cassandra", "infra", "inggwdb", []string{"clusterProfile=local"}, ""},
+	HelmChart{"sprinthive-dev-charts/nexus", "infra", "repo", []string{}, ""},
+	HelmChart{"sprinthive-dev-charts/prometheus", "infra", "metricdb", []string{}, ""},
+	HelmChart{"sprinthive-dev-charts/zipkin", "infra", "tracing", []string{}, ""},
+	HelmChart{"sprinthive-dev-charts/jenkins", "infra", "cicd", []string{}, ""},
+	HelmChart{"sprinthive-dev-charts/kibana", "infra", "logviz", []string{}, ""},
+	HelmChart{"sprinthive-dev-charts/fluent-bit", "infra", "logcollect", []string{}, ""},
+	HelmChart{"sprinthive-dev-charts/elasticsearch", "infra", "logdb", []string{"ClusterProfile=local"}, ""},
+	HelmChart{"stable/grafana", "infra", "metricviz", []string{}, "resources/grafana/values.yaml"},
 	HelmChart{"sprinthive-dev-charts/kong", "infra", "inggw",
-		[]string{"clusterProfile=local", "ProxyService.Type=NodePort"}}}
+		[]string{"clusterProfile=local", "ProxyService.Type=NodePort"}, ""}}
 
 // installCmd represents the create command
 var installCmd = &cobra.Command{
@@ -72,11 +74,34 @@ var installCmd = &cobra.Command{
 func configureGrafana() {
 	waitDeployReady("metricviz-grafana", 1, "infra")
 
+	kubectlCreate("resources/grafana/cm-grafana-datasources.yaml", "infra")
+	kubectlCreate("resources/grafana/cm-grafana-dashboards.yaml", "infra")
+	kubectlCreate("resources/grafana/pod-grafana-configure.yaml", "infra")
+
+	waitPodCompleted("grafana-configure", "infra")
+
+	// Clean up pod
 	cmd := "kubectl"
-	args := []string{"create", "-f", "resources/pod-grafana-configure.yaml"}
+	args := []string{"delete", "pod", "grafana-configure"}
 
 	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to configure grafana: %v", string(output)))
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete grafana-configure pod: %v", string(output)))
+	}
+
+	// Clean up config maps
+	args = []string{"delete", "configmap", "grafana-dashboards", "grafana-datasources"}
+
+	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete config maps for grafana-configure: %v", string(output)))
+	}
+}
+
+func kubectlCreate(filePath string, namespace string) {
+	cmd := "kubectl"
+	args := []string{"create", "-f", filePath, "--namespace", namespace}
+
+	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to create resource %s: %v", filePath, string(output)))
 	}
 }
 
@@ -127,17 +152,21 @@ func installCharts(charts *[]HelmChart) {
 			args = append(args, "--set", override)
 		}
 
+		if chart.ValuesPath != "" {
+			args = append(args, "--values", chart.ValuesPath)
+		}
+
 		if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
 			panic(fmt.Sprintf("Failed to install chart: %v", string(output)))
 		}
 	}
 }
 
-func waitDeployReady(deployName string, expectedNumberReady int, namespace string) {
+func waitDeployReady(deployName string, minNumberReady int, namespace string) {
 	cmd := "kubectl"
 
 	fmt.Printf("Waiting for readiness of deploy %s\n", deployName)
-	args := []string{"get", "deploy", "-o", "jsonpath=\"{range .items[*]}{@.metadata.name}:{@.status.readyReplicas}{end}\"", "--namespace", namespace}
+	args := []string{"get", "deploy", deployName, "-o", "jsonpath=\"{@.status.readyReplicas}\"", "--namespace", namespace}
 
 	deployFinished := false
 	for !deployFinished {
@@ -148,9 +177,31 @@ func waitDeployReady(deployName string, expectedNumberReady int, namespace strin
 			panic(fmt.Sprintf("Failed execute kubectl command to get deploy status: %v", string(output)))
 		}
 
-		if strings.Contains(string(output), fmt.Sprintf("%s:%d", deployName, expectedNumberReady)) {
-			fmt.Println("Deploy is ready!")
+		readyReplicas, err := strconv.Atoi(strings.Replace(string(output), "\"", "", -1))
+		if err == nil && readyReplicas >= minNumberReady {
 			deployFinished = true
+		}
+	}
+}
+
+func waitPodCompleted(podName string, namespace string) {
+	cmd := "kubectl"
+
+	fmt.Printf("Waiting for pod to finish running: %s\n", podName)
+	args := []string{"get", "pod", podName, "-o", "jsonpath=\"{@.status.phase}\"", "--namespace", namespace}
+
+	podCompleted := false
+	for !podCompleted {
+		time.Sleep(1000 * time.Millisecond)
+
+		output, err := exec.Command(cmd, args...).CombinedOutput()
+		if err != nil {
+			panic(fmt.Sprintf("Failed execute kubectl command to get pod phase: %v", string(output)))
+		}
+
+		phase := strings.Replace(string(output), "\"", "", -1)
+		if strings.Compare(phase, "Succeeded") == 0 {
+			podCompleted = true
 		}
 	}
 }
