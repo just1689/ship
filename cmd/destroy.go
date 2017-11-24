@@ -38,7 +38,7 @@ to quickly create a Cobra application.`,
 func removeCharts() {
 	cmd := "helm"
 
-	releases := []string{"inggwdb", "repo", "metricdb", "tracing", "cicd", "logviz", "logcollect", "logdb", "metricviz", "inggw"}
+	releases := []string{"inggwdb", "repo", "metricdb", "tracing", "cicd", "logviz", "logcollect", "logdb", "metricviz", "inggw", "ingcontrol"}
 
 	fmt.Println(fmt.Sprintf("Removing charts: %v", releases))
 	args := []string{"delete", "--purge"}
