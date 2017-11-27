@@ -74,6 +74,7 @@ var installCmd = &cobra.Command{
 		installChartRepo()
 		installCharts(&defaultCharts, domain)
 		configureGrafana()
+		configureKong()
 	},
 }
 
@@ -99,6 +100,22 @@ func configureGrafana() {
 
 	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete config maps for grafana-configure: %v", string(output)))
+	}
+}
+
+func configureKong() {
+	waitDaemonSetReady("inggw-kong", 1, "infra")
+
+	kubectlCreate("resources/kong/pod-kong-configure.yaml", "infra")
+
+	waitPodCompleted("kong-configure", "infra")
+
+	// Clean up pod
+	cmdName := "kubectl"
+	args := []string{"delete", "pod", "kong-configure", "--namespace", "infra"}
+
+	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete kong-configure pod: %v", string(output)))
 	}
 }
 

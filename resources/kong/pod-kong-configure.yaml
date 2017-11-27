@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kong-configure
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kong-configure
+    image: yauritux/busybox-curl
+    imagePullPolicy: IfNotPresent
+    env:
+      - name: KONG_ADMIN
+        value: http://kong-admin.infra:8001
+    command: ["curl"]
+    args:
+      - $(KONG_ADMIN)/plugins
+      - -dname=tcp-log
+      - -dconfig.host=fluent-bit.infra.svc.cluster.local
+      - -dconfig.port=5170
+      - -dconfig.timeout=1000
+      - -dconfig.keepalive=1000
