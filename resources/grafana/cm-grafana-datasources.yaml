@@ -16,7 +16,7 @@ data:
       "jsonData": {
         "esVersion": 5,
         "interval": "Daily",
-        "timeField": "@timestamp"
+        "timeField": "@fb_timestamp"
       }
     }
   Prometheus.json: |
