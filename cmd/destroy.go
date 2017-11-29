@@ -16,38 +16,65 @@ package cmd
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 // destroyCmd represents the destroy command
 var destroyCmd = &cobra.Command{
 	Use:   "destroy",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+	Short: "Removes components installed by ship",
+	Long:  `This will remove all helm releases with release names that match the release names used by the ship installation`,
 	Run: func(cmd *cobra.Command, args []string) {
-		removeCharts()
+		var charts []HelmChart
+		viper.UnmarshalKey("charts", &charts)
+
+		getHelmReleases()
+		removeReleases(&charts)
 	},
 }
 
-func removeCharts() {
-	cmd := "helm"
+func removeReleases(sourceCharts *[]HelmChart) {
+	currentReleases := getHelmReleases()
+	currentReleasesMap := make(map[string]struct{})
+	for _, currentRelease := range currentReleases {
+		currentReleasesMap[currentRelease] = struct{}{}
+	}
 
-	releases := []string{"inggwdb", "repo", "metricdb", "tracing", "cicd", "logviz", "logcollect", "logdb", "metricviz", "inggw", "ingcontrol"}
+	for _, sourceChart := range *sourceCharts {
+		if _, found := currentReleasesMap[sourceChart.ReleaseName]; found {
+			fmt.Println(fmt.Sprintf("Removing release: %v", sourceChart.ReleaseName))
+			removeHelmRelease(sourceChart.ReleaseName)
+		}
+	}
+}
 
-	fmt.Println(fmt.Sprintf("Removing charts: %v", releases))
-	args := []string{"delete", "--purge"}
+func removeHelmRelease(releaseName string) {
+	cmdName := "helm"
+	args := []string{"delete", "--purge", releaseName}
 
-	args = append(args, releases...)
+	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
+		panic(fmt.Sprintf("Failed to remove helm release '%s': %v", releaseName, string(output)))
+	}
+}
 
-	if output, err := exec.Command(cmd, args...).CombinedOutput(); err != nil {
+func getHelmReleases() []string {
+	cmdName := "helm"
+
+	args := []string{"list", "-q"}
+
+	output, err := exec.Command(cmdName, args...).CombinedOutput()
+	if err != nil {
 		panic(fmt.Sprintf("Failed to remove charts: %v", string(output)))
 	}
+
+	releases := strings.Split(strings.Trim(string(output), "\" "), "\n")
+	// The last line is always empty, so pop it
+	releases = releases[:len(releases)-1]
+
+	return releases
 }
 
 func init() {

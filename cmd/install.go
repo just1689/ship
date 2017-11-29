@@ -22,30 +22,8 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
-
-// HelmChart contains the information needed to install a helm chart
-type HelmChart struct {
-	ChartPath   string
-	Namespace   string
-	ReleaseName string
-	Overrides   []string
-	ValuesPath  string
-}
-
-var defaultCharts = []HelmChart{
-	HelmChart{"sprinthive-dev-charts/kong-cassandra", "infra", "inggwdb", []string{"clusterProfile=local"}, ""},
-	HelmChart{"sprinthive-dev-charts/nexus", "infra", "repo", []string{}, ""},
-	HelmChart{"sprinthive-dev-charts/prometheus", "infra", "metricdb", []string{}, ""},
-	HelmChart{"sprinthive-dev-charts/zipkin", "infra", "tracing", []string{"ingress.enabled=true", "ingress.host=zipkin.${domain}", "ingress.class=kong", "ingress.path=/"}, ""},
-	HelmChart{"sprinthive-dev-charts/jenkins", "infra", "cicd", []string{"Master.HostName=jenkins.${domain}"}, ""},
-	HelmChart{"sprinthive-dev-charts/kibana", "infra", "logviz", []string{"ingress.enabled=true", "ingress.host=kibana.${domain}", "ingress.class=kong", "ingress.path=/"}, ""},
-	HelmChart{"sprinthive-dev-charts/fluent-bit", "infra", "logcollect", []string{}, ""},
-	HelmChart{"sprinthive-dev-charts/elasticsearch", "infra", "logdb", []string{"ClusterProfile=local"}, ""},
-	HelmChart{"stable/grafana", "infra", "metricviz", []string{"server.ingress.enabled=true", "server.ingress.hosts={grafana.${domain}}"}, "resources/grafana/values.yaml"},
-	HelmChart{"sprinthive-dev-charts/kong", "infra", "inggw",
-		[]string{"clusterProfile=local", "HostPort=true"}, ""},
-	HelmChart{"sprinthive-dev-charts/kong-ingress-controller", "infra", "ingcontrol", []string{}, ""}}
 
 // installCmd represents the create command
 var installCmd = &cobra.Command{
@@ -70,9 +48,12 @@ var installCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to get domain flag"))
 			os.Exit(1)
 		}
+		var charts []HelmChart
+		viper.UnmarshalKey("charts", &charts)
+
 		checkDependencies()
 		installChartRepo()
-		installCharts(&defaultCharts, domain)
+		installCharts(&charts, domain)
 		configureGrafana()
 		configureKong()
 	},
@@ -147,7 +128,6 @@ Please see https://github.com/kubernetes/helm for instructions on how to install
 			os.Exit(1)
 		}
 	}
-
 }
 
 func installChartRepo() {
