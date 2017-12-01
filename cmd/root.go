@@ -16,7 +16,10 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 
+	"github.com/SprintHive/ship/pkg/helm"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -48,28 +51,27 @@ func Execute() {
 	}
 }
 
-// HelmChart contains the information needed to install a helm chart
-type HelmChart struct {
-	ChartPath   string
-	Namespace   string
-	ReleaseName string
-	Overrides   []string
-	ValuesPath  string
-}
-
-var defaultCharts = []HelmChart{
-	HelmChart{"sprinthive-dev-charts/kong-cassandra", "infra", "inggwdb", []string{"clusterProfile=local"}, ""},
-	HelmChart{"sprinthive-dev-charts/nexus", "infra", "repo", []string{}, ""},
-	HelmChart{"sprinthive-dev-charts/prometheus", "infra", "metricdb", []string{}, ""},
-	HelmChart{"sprinthive-dev-charts/zipkin", "infra", "tracing", []string{"ingress.enabled=true", "ingress.host=zipkin.${domain}", "ingress.class=kong", "ingress.path=/"}, ""},
-	HelmChart{"sprinthive-dev-charts/jenkins", "infra", "cicd", []string{"Master.HostName=jenkins.${domain}"}, ""},
-	HelmChart{"sprinthive-dev-charts/kibana", "infra", "logviz", []string{"ingress.enabled=true", "ingress.host=kibana.${domain}", "ingress.class=kong", "ingress.path=/"}, ""},
-	HelmChart{"sprinthive-dev-charts/fluent-bit", "infra", "logcollect", []string{}, ""},
-	HelmChart{"sprinthive-dev-charts/elasticsearch", "infra", "logdb", []string{"ClusterProfile=local"}, ""},
-	HelmChart{"stable/grafana", "infra", "metricviz", []string{"server.ingress.enabled=true", "server.ingress.hosts={grafana.${domain}}"}, "resources/grafana/values.yaml"},
-	HelmChart{"sprinthive-dev-charts/kong", "infra", "inggw",
-		[]string{"clusterProfile=local", "HostPort=true"}, ""},
-	HelmChart{"sprinthive-dev-charts/kong-ingress-controller", "infra", "ingcontrol", []string{}, ""}}
+var defaultCharts = []helm.Chart{
+	helm.Chart{ChartPath: "sprinthive-dev-charts/kong-cassandra", Namespace: "infra", ReleaseName: "inggwdb",
+		Overrides: []string{"clusterProfile=local"}, ValuesPath: ""},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/nexus", Namespace: "infra", ReleaseName: "repo", Overrides: []string{},
+		ValuesPath: ""},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/prometheus", Namespace: "infra", ReleaseName: "metricdb",
+		Overrides: []string{}, ValuesPath: ""},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/zipkin", Namespace: "infra", ReleaseName: "tracing",
+		Overrides: []string{"ingress.enabled=true", "ingress.host=zipkin.${domain}", "ingress.class=kong", "ingress.path=/"}, ValuesPath: "",
+	},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/jenkins", Namespace: "infra", ReleaseName: "cicd", Overrides: []string{"Master.HostName=jenkins.${domain}"}, ValuesPath: ""},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/kibana", Namespace: "infra", ReleaseName: "logviz",
+		Overrides:  []string{"ingress.enabled=true", "ingress.host=kibana.${domain}", "ingress.class=kong", "ingress.path=/"},
+		ValuesPath: ""},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/fluent-bit",
+		Namespace: "infra", ReleaseName: "logcollect", Overrides: []string{}, ValuesPath: ""},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/elasticsearch", Namespace: "infra", ReleaseName: "logdb", Overrides: []string{"ClusterProfile=local"}, ValuesPath: ""},
+	helm.Chart{ChartPath: "stable/grafana", Namespace: "infra", ReleaseName: "metricviz", Overrides: []string{"server.ingress.enabled=true", "server.ingress.hosts={grafana.${domain}}"}, ValuesPath: "resources/grafana/values.yaml"},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/kong", Namespace: "infra", ReleaseName: "inggw",
+		Overrides: []string{"clusterProfile=local", "HostPort=true"}, ValuesPath: ""},
+	helm.Chart{ChartPath: "sprinthive-dev-charts/kong-ingress-controller", Namespace: "infra", ReleaseName: "ingcontrol", Overrides: []string{}, ValuesPath: ""}}
 
 func init() {
 	cobra.OnInitialize(initConfig)
@@ -82,6 +84,8 @@ func init() {
 	// Cobra also supports local flags, which will only run
 	// when this action is called directly.
 	RootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+
+	checkDependencies()
 }
 
 // initConfig reads in config file and ENV variables if set.
@@ -114,4 +118,25 @@ func initConfig() {
 
 func setDefaults() {
 	viper.SetDefault("charts", defaultCharts)
+}
+
+func checkDependencies() {
+	cmdName := "helm"
+	args := []string{"version"}
+
+	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
+		if len(output) == 0 {
+			fmt.Fprintf(os.Stderr, "Helm is not installed. Please see https://github.com/kubernetes/helm for instructions on how to install helm.\n")
+			os.Exit(1)
+		}
+		outputMsg := string(output)
+		if strings.Contains(outputMsg, "Error") {
+			fmt.Fprintf(os.Stderr, fmt.Sprintf(`Helm installation is not healthy:
+
+%s
+Please see https://github.com/kubernetes/helm for instructions on how to install helm correctly.`,
+				outputMsg))
+			os.Exit(1)
+		}
+	}
 }

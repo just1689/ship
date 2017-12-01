@@ -14,10 +14,7 @@
 package cmd
 
 import (
-	"fmt"
-	"os/exec"
-	"strings"
-
+	"github.com/SprintHive/ship/pkg/helm"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,53 +25,11 @@ var destroyCmd = &cobra.Command{
 	Short: "Removes components installed by ship",
 	Long:  `This will remove all helm releases with release names that match the release names used by the ship installation`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var charts []HelmChart
+		var charts []helm.Chart
 		viper.UnmarshalKey("charts", &charts)
 
-		getHelmReleases()
-		removeReleases(&charts)
+		helm.RemoveReleases(&charts)
 	},
-}
-
-func removeReleases(sourceCharts *[]HelmChart) {
-	currentReleases := getHelmReleases()
-	currentReleasesMap := make(map[string]struct{})
-	for _, currentRelease := range currentReleases {
-		currentReleasesMap[currentRelease] = struct{}{}
-	}
-
-	for _, sourceChart := range *sourceCharts {
-		if _, found := currentReleasesMap[sourceChart.ReleaseName]; found {
-			fmt.Println(fmt.Sprintf("Removing release: %v", sourceChart.ReleaseName))
-			removeHelmRelease(sourceChart.ReleaseName)
-		}
-	}
-}
-
-func removeHelmRelease(releaseName string) {
-	cmdName := "helm"
-	args := []string{"delete", "--purge", releaseName}
-
-	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-		panic(fmt.Sprintf("Failed to remove helm release '%s': %v", releaseName, string(output)))
-	}
-}
-
-func getHelmReleases() []string {
-	cmdName := "helm"
-
-	args := []string{"list", "-q"}
-
-	output, err := exec.Command(cmdName, args...).CombinedOutput()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to remove charts: %v", string(output)))
-	}
-
-	releases := strings.Split(strings.Trim(string(output), "\" "), "\n")
-	// The last line is always empty, so pop it
-	releases = releases[:len(releases)-1]
-
-	return releases
 }
 
 func init() {

@@ -17,10 +17,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
-	"strings"
-	"time"
 
+	"github.com/SprintHive/ship/pkg/helm"
+	"github.com/SprintHive/ship/pkg/kubectl"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -48,25 +47,22 @@ var installCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to get domain flag"))
 			os.Exit(1)
 		}
-		var charts []HelmChart
+		var charts []helm.Chart
 		viper.UnmarshalKey("charts", &charts)
 
-		checkDependencies()
-		installChartRepo()
-		installCharts(&charts, domain)
+		helm.InstallChartRepo()
+		helm.InstallCharts(&charts, domain)
 		configureGrafana()
 		configureKong()
 	},
 }
 
 func configureGrafana() {
-	waitDeployReady("metricviz-grafana", 1, "infra")
-
-	kubectlCreate("resources/grafana/cm-grafana-datasources.yaml", "infra")
-	kubectlCreate("resources/grafana/cm-grafana-dashboards.yaml", "infra")
-	kubectlCreate("resources/grafana/pod-grafana-configure.yaml", "infra")
-
-	waitPodCompleted("grafana-configure", "infra")
+	kubectl.WaitDeployReady("metricviz-grafana", 1, "infra")
+	kubectl.Create("resources/grafana/cm-grafana-datasources.yaml", "infra")
+	kubectl.Create("resources/grafana/cm-grafana-dashboards.yaml", "infra")
+	kubectl.Create("resources/grafana/pod-grafana-configure.yaml", "infra")
+	kubectl.WaitPodCompleted("grafana-configure", "infra")
 
 	// Clean up pod
 	cmdName := "kubectl"
@@ -85,11 +81,9 @@ func configureGrafana() {
 }
 
 func configureKong() {
-	waitDaemonSetReady("inggw-kong", 1, "infra")
-
-	kubectlCreate("resources/kong/pod-kong-configure.yaml", "infra")
-
-	waitPodCompleted("kong-configure", "infra")
+	kubectl.WaitDaemonSetReady("inggw-kong", 1, "infra")
+	kubectl.Create("resources/kong/pod-kong-configure.yaml", "infra")
+	kubectl.WaitPodCompleted("kong-configure", "infra")
 
 	// Clean up pod
 	cmdName := "kubectl"
@@ -97,122 +91,6 @@ func configureKong() {
 
 	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete kong-configure pod: %v", string(output)))
-	}
-}
-
-func kubectlCreate(filePath string, namespace string) {
-	cmdName := "kubectl"
-	args := []string{"create", "-f", filePath, "--namespace", namespace}
-
-	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to create resource %s: %v", filePath, string(output)))
-	}
-}
-
-func checkDependencies() {
-	cmdName := "helm"
-	args := []string{"version"}
-
-	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-		if len(output) == 0 {
-			fmt.Fprintf(os.Stderr, "Helm is not installed. Please see https://github.com/kubernetes/helm for instructions on how to install helm.\n")
-			os.Exit(1)
-		}
-		outputMsg := string(output)
-		if strings.Contains(outputMsg, "Error") {
-			fmt.Fprintf(os.Stderr, fmt.Sprintf(`Helm installation is not healthy:
-
-%s
-Please see https://github.com/kubernetes/helm for instructions on how to install helm correctly.`,
-				outputMsg))
-			os.Exit(1)
-		}
-	}
-}
-
-func installChartRepo() {
-	fmt.Println("install chart repo called")
-
-	cmdName := "helm"
-	args := []string{"repo", "add", "sprinthive-dev-charts", "https://s3.eu-west-2.amazonaws.com/sprinthive-dev-charts"}
-
-	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to install sprinthive charts: %v", string(output)))
-		os.Exit(1)
-	}
-
-	fmt.Println("Successfully installed sprinthive chart repo")
-}
-
-func installCharts(charts *[]HelmChart, domain string) {
-	cmdName := "helm"
-
-	for _, chart := range *charts {
-		fmt.Printf("installing chart: %s\n", chart.ChartPath)
-		args := []string{"install", chart.ChartPath, "-n", chart.ReleaseName, "--namespace", chart.Namespace}
-
-		for _, override := range chart.Overrides {
-			args = append(args, "--set", strings.Replace(override, "${domain}", domain, -1))
-		}
-
-		if chart.ValuesPath != "" {
-			args = append(args, "--values", chart.ValuesPath)
-		}
-
-		if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-			panic(fmt.Sprintf("Failed to install chart: %v", string(output)))
-		}
-	}
-}
-func waitDeployReady(resourceName string, minNumberReady int, namespace string) {
-	waitResourceReady(resourceName, "deploy", "readyReplicas", minNumberReady, namespace)
-}
-
-func waitDaemonSetReady(resourceName string, minNumberReady int, namespace string) {
-	waitResourceReady(resourceName, "daemonset", "numberReady", minNumberReady, namespace)
-}
-
-func waitResourceReady(resourceName string, resourceType string, resourceCountField string, minNumberReady int, namespace string) {
-	cmdName := "kubectl"
-
-	fmt.Printf("Waiting for readiness of %s %s\n", resourceType, resourceName)
-	args := []string{"get", resourceType, resourceName, "-o", fmt.Sprintf("jsonpath=\"{@.status.%s}\"", resourceCountField), "--namespace", namespace}
-
-	resourceReady := false
-	for !resourceReady {
-		time.Sleep(1000 * time.Millisecond)
-
-		output, err := exec.Command(cmdName, args...).CombinedOutput()
-		if err != nil {
-			panic(fmt.Sprintf("Failed execute kubectl command to get deploy status: %v", string(output)))
-		}
-
-		readyReplicas, err := strconv.Atoi(strings.Replace(string(output), "\"", "", -1))
-		if err == nil && readyReplicas >= minNumberReady {
-			resourceReady = true
-		}
-	}
-}
-
-func waitPodCompleted(podName string, namespace string) {
-	cmdName := "kubectl"
-
-	fmt.Printf("Waiting for pod to finish running: %s\n", podName)
-	args := []string{"get", "pod", podName, "-o", "jsonpath=\"{@.status.phase}\"", "--namespace", namespace}
-
-	podCompleted := false
-	for !podCompleted {
-		time.Sleep(1000 * time.Millisecond)
-
-		output, err := exec.Command(cmdName, args...).CombinedOutput()
-		if err != nil {
-			panic(fmt.Sprintf("Failed execute kubectl command to get pod phase: %v", string(output)))
-		}
-
-		phase := strings.Replace(string(output), "\"", "", -1)
-		if strings.Compare(phase, "Succeeded") == 0 {
-			podCompleted = true
-		}
 	}
 }
 
