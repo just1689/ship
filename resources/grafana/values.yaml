@@ -338,10 +338,10 @@ serverConfigFile:
     ;config_file = /etc/grafana/ldap.toml
 
     [smtp]
-    enabled = true
-    host = email-smtp.eu-west-1.amazonaws.com:587
-    user = AKIAIYUXCKWJTYAS4S6Q
-    password = Am+A8wqjbEIIHHPyyhpa3PsxNaYzsILwyoshrvFIiNWE
+    enabled = false
+    ;host =
+    ;user =
+    ;password =
     ;cert_file =
     ;key_file =
     ;skip_verify = false
