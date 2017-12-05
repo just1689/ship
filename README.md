@@ -38,3 +38,7 @@ See the contents of build.sh for what needs to be done.
 ## Usage
 ### Install
 Execute: `./ship install`
+
+## More info
+
+For a more detailed guide have a look at the [wiki](https://github.com/SprintHive/ship/wiki)
