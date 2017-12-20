@@ -37,7 +37,7 @@ See the contents of build.sh for what needs to be done.
 
 ## Usage
 ### Install
-Execute: `./ship install`
+Execute: `./ship install -d $(minikube ip).nip.io`
 
 ## More info
 
