@@ -16,7 +16,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/exec"
 
 	"github.com/SprintHive/ship/pkg/helm"
 	"github.com/SprintHive/ship/pkg/kubectl"
@@ -32,6 +31,7 @@ var installCmd = &cobra.Command{
 	
 	The following components will be installed:
 	* Ingress GW (Kong)
+	* Ingress Controller (Kong Controller)
 	* Ingress GW Database (Cassandra)
 	* Logging database (Elasticsearch)
 	* Log collector (Fluent-bit)
@@ -47,51 +47,87 @@ var installCmd = &cobra.Command{
 			fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to get domain flag"))
 			os.Exit(1)
 		}
-		var charts []helm.Chart
-		viper.UnmarshalKey("charts", &charts)
+		var components []ShipComponent
+		viper.UnmarshalKey("components", &components)
 
 		helm.InstallChartRepo()
-		helm.InstallCharts(&charts, domain)
-		configureGrafana()
-		configureKong()
+		installComponents(&components, domain)
 	},
 }
 
-func configureGrafana() {
-	kubectl.WaitDeployReady("metricviz-grafana", 1, "infra")
-	kubectl.Create("resources/grafana/cm-grafana-datasources.yaml", "infra")
-	kubectl.Create("resources/grafana/cm-grafana-dashboards.yaml", "infra")
-	kubectl.Create("resources/grafana/pod-grafana-configure.yaml", "infra")
-	kubectl.WaitPodCompleted("grafana-configure", "infra")
-
-	// Clean up pod
-	cmdName := "kubectl"
-	args := []string{"delete", "pod", "grafana-configure", "--namespace", "infra"}
-
-	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete grafana-configure pod: %v", string(output)))
+func installComponents(components *[]ShipComponent, domain string) {
+	releasesToSkip := make(map[string]struct{})
+	currentReleases := helm.GetHelmReleases()
+	for _, release := range currentReleases {
+		releasesToSkip[release] = struct{}{}
 	}
 
-	// Clean up config maps
-	args = []string{"delete", "configmap", "grafana-dashboards", "grafana-datasources", "--namespace", "infra"}
+	errors := []error{}
 
-	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete config maps for grafana-configure: %v", string(output)))
+	for _, component := range *components {
+		if _, found := releasesToSkip[component.Chart.ReleaseName]; found {
+			fmt.Printf("Skipping installation of already installed component: %s\n", component.Chart.ChartPath)
+		} else {
+			helm.InstallChart(&component.Chart, domain)
+		}
+
+		for _, postInstallResource := range component.PostInstallResources {
+			if postInstallResource.PreconditionReady != (KubernetesResource{}) {
+				if err := waitForResourceReady(&postInstallResource.PreconditionReady); err != nil {
+					fmt.Printf("Error encountered: %v\n", err)
+					errors = append(errors, err)
+					continue
+				}
+			}
+
+			// TODO: Fix hardcoded infra namespace
+			kubectl.Create(postInstallResource.ManifestPath, "infra")
+
+			if postInstallResource.WaitForDone != (KubernetesResource{}) {
+				if err := waitForResourceCompleted(&postInstallResource.WaitForDone); err != nil {
+					fmt.Printf("Error encountered: %v\n", err)
+					errors = append(errors, err)
+					continue
+				}
+			}
+		}
+
+		for _, postInstallResource := range component.PostInstallResources {
+			kubectl.Delete(postInstallResource.ManifestPath, "infra")
+		}
+	}
+
+	if len(errors) == 0 {
+		fmt.Println("Installation was successful!")
+	} else {
+		fmt.Println("Installation completed with errors:")
+		for _, componentError := range errors {
+			fmt.Println(componentError)
+		}
 	}
 }
 
-func configureKong() {
-	kubectl.WaitDaemonSetReady("inggw-kong", 1, "infra")
-	kubectl.Create("resources/kong/pod-kong-configure.yaml", "infra")
-	kubectl.WaitPodCompleted("kong-configure", "infra")
-
-	// Clean up pod
-	cmdName := "kubectl"
-	args := []string{"delete", "pod", "kong-configure", "--namespace", "infra"}
-
-	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete kong-configure pod: %v", string(output)))
+func waitForResourceReady(kubeResource *KubernetesResource) error {
+	if kubeResource.Type == "deployment" {
+		kubectl.WaitDeployReady(kubeResource.Name, 1, kubeResource.Namespace)
+	} else if kubeResource.Type == "daemonset" {
+		kubectl.WaitDaemonSetReady(kubeResource.Name, 1, kubeResource.Namespace)
+	} else {
+		return fmt.Errorf("unsupported wait precondition type: %s", kubeResource.Type)
 	}
+
+	return nil
+}
+
+func waitForResourceCompleted(kubeResource *KubernetesResource) error {
+	if kubeResource.Type == "pod" {
+		kubectl.WaitPodCompleted(kubeResource.Name, kubeResource.Namespace)
+	} else {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Unsupported wait type: %s\n", kubeResource.Type))
+		return fmt.Errorf("unsupported wait resource type: %s", kubeResource.Type)
+	}
+
+	return nil
 }
 
 func init() {

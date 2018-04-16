@@ -25,6 +25,27 @@ import (
 	"github.com/spf13/viper"
 )
 
+// ShipComponent contains the information necessary to install components into SHIP
+type ShipComponent struct {
+	Chart                helm.Chart
+	PostInstallResources []PostInstallResource
+}
+
+// PostInstallResource contains the information necessary to execute a post chart installation
+// one-time manifest (e.g. configuration pod)
+type PostInstallResource struct {
+	PreconditionReady KubernetesResource
+	ManifestPath      string
+	WaitForDone       KubernetesResource
+}
+
+// KubernetesResource uniquely identifies a Kubernetes resource
+type KubernetesResource struct {
+	Name      string
+	Type      string
+	Namespace string
+}
+
 var cfgFile string
 
 // RootCmd represents the base command when called without any subcommands
@@ -51,27 +72,47 @@ func Execute() {
 	}
 }
 
-var defaultCharts = []helm.Chart{
-	helm.Chart{ChartPath: "sprinthive-dev-charts/kong-cassandra", Namespace: "infra", ReleaseName: "inggwdb",
-		Overrides: []string{"clusterProfile=local"}, ValuesPath: ""},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/nexus", Namespace: "infra", ReleaseName: "repo", Overrides: []string{},
-		ValuesPath: ""},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/prometheus", Namespace: "infra", ReleaseName: "metricdb",
-		Overrides: []string{}, ValuesPath: ""},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/zipkin", Namespace: "infra", ReleaseName: "tracing",
-		Overrides: []string{"ingress.enabled=true", "ingress.host=zipkin.${domain}", "ingress.class=kong", "ingress.path=/"}, ValuesPath: "",
-	},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/jenkins", Namespace: "infra", ReleaseName: "cicd", Overrides: []string{"Master.HostName=jenkins.${domain}"}, ValuesPath: ""},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/kibana", Namespace: "infra", ReleaseName: "logviz",
-		Overrides:  []string{"ingress.enabled=true", "ingress.host=kibana.${domain}", "ingress.class=kong", "ingress.path=/"},
-		ValuesPath: ""},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/fluent-bit",
-		Namespace: "infra", ReleaseName: "logcollect", Overrides: []string{}, ValuesPath: ""},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/elasticsearch", Namespace: "infra", ReleaseName: "logdb", Overrides: []string{"ClusterProfile=local"}, ValuesPath: ""},
-	helm.Chart{ChartPath: "stable/grafana", Namespace: "infra", ReleaseName: "metricviz", Overrides: []string{"server.ingress.enabled=true", "server.ingress.hosts={grafana.${domain}}"}, ValuesPath: "resources/grafana/values.yaml"},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/kong", Namespace: "infra", ReleaseName: "inggw",
-		Overrides: []string{"clusterProfile=local", "HostPort=true"}, ValuesPath: ""},
-	helm.Chart{ChartPath: "sprinthive-dev-charts/kong-ingress-controller", Namespace: "infra", ReleaseName: "ingcontrol", Overrides: []string{}, ValuesPath: ""}}
+var shipComponents = []ShipComponent{
+  {Chart: helm.Chart{ChartPath: "stable/heapster", Namespace: "kube-system", ReleaseName: "sysmetric",
+    Overrides: []string{"rbac.create=true"}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-cassandra", Namespace: "infra", ReleaseName: "inggwdb",
+		Overrides: []string{"clusterProfile=production"}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/nexus", Namespace: "infra", ReleaseName: "repo"}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/prometheus", Namespace: "infra", ReleaseName: "metricdb"}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/zipkin", Namespace: "infra", ReleaseName: "tracing",
+		Overrides: []string{"ingress.enabled=true", "ingress.host=zipkin.${domain}", "ingress.class=kong",
+			"ingress.path=/"}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/jenkins", Namespace: "infra", ReleaseName: "cicd",
+		Overrides: []string{"Master.HostName=jenkins.${domain}"}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kibana", Namespace: "infra", ReleaseName: "logviz",
+		Overrides: []string{"ingress.enabled=true", "ingress.host=kibana.${domain}", "ingress.class=kong", "ingress.path=/"}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/fluent-bit",
+		Namespace: "infra", ReleaseName: "logcollect", Overrides: []string{}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/elasticsearch", Namespace: "infra", ReleaseName: "logdb", Overrides: []string{"ClusterProfile=production"}}},
+	{Chart: helm.Chart{ChartPath: "stable/grafana", Namespace: "infra", ReleaseName: "metricviz",
+		Overrides:  []string{"server.ingress.enabled=true", "server.ingress.hosts={grafana.${domain}}"},
+		ValuesPath: "resources/grafana/values.yaml"},
+		PostInstallResources: []PostInstallResource{
+			{ManifestPath: "resources/grafana/cm-grafana-dashboards.yaml"},
+			{ManifestPath: "resources/grafana/cm-grafana-datasources.yaml"},
+			{
+				PreconditionReady: KubernetesResource{
+					Name: "metricviz-grafana", Type: "deployment", Namespace: "infra",
+				},
+				ManifestPath: "resources/grafana/pod-grafana-configure.yaml",
+				WaitForDone: KubernetesResource{
+					Name: "grafana-configure", Type: "pod", Namespace: "infra",
+				},
+			}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong", Namespace: "infra", ReleaseName: "inggw",
+		Overrides: []string{"clusterProfile=local", "HostPort=true"}},
+		PostInstallResources: []PostInstallResource{
+			{
+				PreconditionReady: KubernetesResource{
+					Name: "inggw-kong", Type: "daemonset", Namespace: "infra"},
+				ManifestPath: "resources/kong/pod-kong-configure.yaml",
+				WaitForDone:  KubernetesResource{Name: "kong-configure", Type: "pod", Namespace: "infra"}}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-ingress-controller", Namespace: "infra", ReleaseName: "ingcontrol"}}}
 
 func init() {
 	cobra.OnInitialize(initConfig)
@@ -117,7 +158,7 @@ func initConfig() {
 }
 
 func setDefaults() {
-	viper.SetDefault("charts", defaultCharts)
+	viper.SetDefault("components", shipComponents)
 }
 
 func checkDependencies() {

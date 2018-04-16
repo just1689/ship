@@ -9,13 +9,26 @@ import (
 	"time"
 )
 
+var (
+	cmdName = "kubectl"
+)
+
 // Create adds the given resource to the active kubernetes cluster
 func Create(filePath string, namespace string) {
-	cmdName := "kubectl"
 	args := []string{"create", "-f", filePath, "--namespace", namespace}
 
+	fmt.Println(fmt.Sprintf("Creating resource: %s", filePath))
 	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
 		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to create resource %s: %v", filePath, string(output)))
+	}
+}
+
+// Delete removes the given resource from the active kubernetes cluster
+func Delete(filePath string, namespace string) {
+	args := []string{"delete", "-f", filePath, "--namespace", namespace}
+
+	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("Failed to delete resource %s: %v", filePath, string(output)))
 	}
 }
 
@@ -31,8 +44,6 @@ func WaitDaemonSetReady(resourceName string, minNumberReady int, namespace strin
 
 // WaitPodCompleted blocks until the specified pod is in the Succeeded phase
 func WaitPodCompleted(podName string, namespace string) {
-	cmdName := "kubectl"
-
 	fmt.Printf("Waiting for pod to finish running: %s\n", podName)
 	args := []string{"get", "pod", podName, "-o", "jsonpath=\"{@.status.phase}\"", "--namespace", namespace}
 
@@ -53,8 +64,6 @@ func WaitPodCompleted(podName string, namespace string) {
 }
 
 func waitResourceReady(resourceName string, resourceType string, resourceCountField string, minNumberReady int, namespace string) {
-	cmdName := "kubectl"
-
 	fmt.Printf("Waiting for readiness of %s %s\n", resourceType, resourceName)
 	args := []string{"get", resourceType, resourceName, "-o", fmt.Sprintf("jsonpath=\"{@.status.%s}\"", resourceCountField), "--namespace", namespace}
 

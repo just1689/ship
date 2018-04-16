@@ -5,6 +5,7 @@ There are a many infrastructure components needed to run an effective microservi
 
 Components that will be installed currently include:
 * Ingress GW (Kong)
+* Ingress Controller (Kong Controller)
 * Ingress GW Database (Cassandra)
 * Logging database (Elasticsearch)
 * Log collector (Fluent-bit)

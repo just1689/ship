@@ -64,23 +64,21 @@ func InstallChartRepo() {
 	fmt.Println("Successfully installed sprinthive chart repo")
 }
 
-// InstallCharts will install the provided charts into the currently configured Kubernetes cluster
-func InstallCharts(charts *[]Chart, domain string) {
-	for _, chart := range *charts {
-		fmt.Printf("installing chart: %s\n", chart.ChartPath)
-		args := []string{"install", chart.ChartPath, "-n", chart.ReleaseName, "--namespace", chart.Namespace}
+// InstallChart will install the provided chart into the currently configured Kubernetes cluster
+func InstallChart(chart *Chart, domain string) {
+	fmt.Printf("Installing chart: %s\n", chart.ChartPath)
+	args := []string{"install", chart.ChartPath, "-n", chart.ReleaseName, "--namespace", chart.Namespace}
 
-		for _, override := range chart.Overrides {
-			args = append(args, "--set", strings.Replace(override, "${domain}", domain, -1))
-		}
+	for _, override := range chart.Overrides {
+		args = append(args, "--set", strings.Replace(override, "${domain}", domain, -1))
+	}
 
-		if chart.ValuesPath != "" {
-			args = append(args, "--values", chart.ValuesPath)
-		}
+	if chart.ValuesPath != "" {
+		args = append(args, "--values", chart.ValuesPath)
+	}
 
-		if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
-			panic(fmt.Sprintf("Failed to install chart: %v", string(output)))
-		}
+	if output, err := exec.Command(cmdName, args...).CombinedOutput(); err != nil {
+		panic(fmt.Sprintf("Failed to install chart: %v", string(output)))
 	}
 }
 
