@@ -91,19 +91,7 @@ var shipComponents = []ShipComponent{
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/elasticsearch", Namespace: "infra", ReleaseName: "logdb", Overrides: []string{"ClusterProfile=production"}}},
 	{Chart: helm.Chart{ChartPath: "stable/grafana", Namespace: "infra", ReleaseName: "metricviz",
 		Overrides:  []string{"server.ingress.enabled=true", "server.ingress.hosts={grafana.${domain}}"},
-		ValuesPath: "resources/grafana/values.yaml"},
-		PostInstallResources: []PostInstallResource{
-			{ManifestPath: "resources/grafana/cm-grafana-dashboards.yaml"},
-			{ManifestPath: "resources/grafana/cm-grafana-datasources.yaml"},
-			{
-				PreconditionReady: KubernetesResource{
-					Name: "metricviz-grafana", Type: "deployment", Namespace: "infra",
-				},
-				ManifestPath: "resources/grafana/pod-grafana-configure.yaml",
-				WaitForDone: KubernetesResource{
-					Name: "grafana-configure", Type: "pod", Namespace: "infra",
-				},
-			}}},
+		ValuesPath: "resources/grafana/values.yaml"}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong", Namespace: "infra", ReleaseName: "inggw",
 		Overrides: []string{"clusterProfile=local", "HostPort=true"}},
 		PostInstallResources: []PostInstallResource{
