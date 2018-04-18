@@ -28,13 +28,27 @@ import (
 // ShipComponent contains the information necessary to install components into SHIP
 type ShipComponent struct {
 	Chart                helm.Chart
+	PreInstallResources []PreInstallResource
 	PostInstallResources []PostInstallResource
+}
+
+type PreconditionReadySpec struct {
+	Resource       KubernetesResource
+	MinReplicas    int
+}
+
+// PreInstallResource contains the information necessary to execute a pre chart installation
+// one-time manifest (e.g. configuration pod)
+type PreInstallResource struct {
+	PreconditionReady PreconditionReadySpec
+	ManifestPath      string
+	WaitForDone       KubernetesResource
 }
 
 // PostInstallResource contains the information necessary to execute a post chart installation
 // one-time manifest (e.g. configuration pod)
 type PostInstallResource struct {
-	PreconditionReady KubernetesResource
+	PreconditionReady PreconditionReadySpec
 	ManifestPath      string
 	WaitForDone       KubernetesResource
 }
@@ -73,8 +87,8 @@ func Execute() {
 }
 
 var shipComponents = []ShipComponent{
-  {Chart: helm.Chart{ChartPath: "stable/heapster", Namespace: "kube-system", ReleaseName: "sysmetric",
-    Overrides: []string{"rbac.create=true"}}},
+  //{Chart: helm.Chart{ChartPath: "stable/heapster", Namespace: "kube-system", ReleaseName: "sysmetric",
+  //  Overrides: []string{"rbac.create=true"}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-cassandra", Namespace: "infra", ReleaseName: "inggwdb",
 		Overrides: []string{"clusterProfile=production"}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/nexus", Namespace: "infra", ReleaseName: "repo"}},
@@ -94,10 +108,14 @@ var shipComponents = []ShipComponent{
 		ValuesPath: "resources/grafana/values.yaml"}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong", Namespace: "infra", ReleaseName: "inggw",
 		Overrides: []string{"clusterProfile=local", "HostPort=true"}},
+		PreInstallResources: []PreInstallResource{
+			{
+				PreconditionReady: PreconditionReadySpec{Resource: KubernetesResource {Name: "inggwdb-kong-cassandr", Type: "statefulset", Namespace: "infra"}, MinReplicas: 2},
+				ManifestPath: "resources/kong/pod-kong-pre-configure.yaml",
+				WaitForDone:  KubernetesResource{Name: "kong-pre-configure", Type: "pod", Namespace: "infra"}}},
 		PostInstallResources: []PostInstallResource{
 			{
-				PreconditionReady: KubernetesResource{
-					Name: "inggw-kong", Type: "daemonset", Namespace: "infra"},
+				PreconditionReady: PreconditionReadySpec{Resource:KubernetesResource{Name: "inggw-kong", Type: "daemonset", Namespace: "infra"}, MinReplicas: 1},
 				ManifestPath: "resources/kong/pod-kong-configure.yaml",
 				WaitForDone:  KubernetesResource{Name: "kong-configure", Type: "pod", Namespace: "infra"}}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-ingress-controller", Namespace: "infra", ReleaseName: "ingcontrol"}}}

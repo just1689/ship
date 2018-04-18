@@ -68,12 +68,32 @@ func installComponents(components *[]ShipComponent, domain string) {
 		if _, found := releasesToSkip[component.Chart.ReleaseName]; found {
 			fmt.Printf("Skipping installation of already installed component: %s\n", component.Chart.ChartPath)
 		} else {
+			for _, preInstallSpec := range component.PreInstallResources {
+				if preInstallSpec.PreconditionReady.Resource != (KubernetesResource{}) {
+					if err := waitForResourceReady(&preInstallSpec.PreconditionReady.Resource, preInstallSpec.PreconditionReady.MinReplicas); err != nil {
+						fmt.Printf("Error encountered: %v\n", err)
+						errors = append(errors, err)
+						continue
+					}
+				}
+
+				// TODO: Fix hardcoded infra namespace
+				kubectl.Create(preInstallSpec.ManifestPath, "infra")
+
+				if preInstallSpec.WaitForDone != (KubernetesResource{}) {
+					if err := waitForResourceCompleted(&preInstallSpec.WaitForDone); err != nil {
+						fmt.Printf("Error encountered: %v\n", err)
+						errors = append(errors, err)
+						continue
+					}
+				}
+			}
 			helm.InstallChart(&component.Chart, domain)
 		}
 
-		for _, postInstallResource := range component.PostInstallResources {
-			if postInstallResource.PreconditionReady != (KubernetesResource{}) {
-				if err := waitForResourceReady(&postInstallResource.PreconditionReady); err != nil {
+		for _, postInstallSpec := range component.PostInstallResources {
+			if postInstallSpec.PreconditionReady.Resource != (KubernetesResource{}) {
+				if err := waitForResourceReady(&postInstallSpec.PreconditionReady.Resource, postInstallSpec.PreconditionReady.MinReplicas); err != nil {
 					fmt.Printf("Error encountered: %v\n", err)
 					errors = append(errors, err)
 					continue
@@ -81,10 +101,10 @@ func installComponents(components *[]ShipComponent, domain string) {
 			}
 
 			// TODO: Fix hardcoded infra namespace
-			kubectl.Create(postInstallResource.ManifestPath, "infra")
+			kubectl.Create(postInstallSpec.ManifestPath, "infra")
 
-			if postInstallResource.WaitForDone != (KubernetesResource{}) {
-				if err := waitForResourceCompleted(&postInstallResource.WaitForDone); err != nil {
+			if postInstallSpec.WaitForDone != (KubernetesResource{}) {
+				if err := waitForResourceCompleted(&postInstallSpec.WaitForDone); err != nil {
 					fmt.Printf("Error encountered: %v\n", err)
 					errors = append(errors, err)
 					continue
@@ -107,11 +127,13 @@ func installComponents(components *[]ShipComponent, domain string) {
 	}
 }
 
-func waitForResourceReady(kubeResource *KubernetesResource) error {
+func waitForResourceReady(kubeResource *KubernetesResource, minReplicas int) error {
 	if kubeResource.Type == "deployment" {
-		kubectl.WaitDeployReady(kubeResource.Name, 1, kubeResource.Namespace)
+		kubectl.WaitDeployReady(kubeResource.Name, minReplicas, kubeResource.Namespace)
 	} else if kubeResource.Type == "daemonset" {
-		kubectl.WaitDaemonSetReady(kubeResource.Name, 1, kubeResource.Namespace)
+		kubectl.WaitDaemonSetReady(kubeResource.Name, minReplicas, kubeResource.Namespace)
+	} else if kubeResource.Type == "statefulset" {
+		kubectl.WaitStatefulSetReady(kubeResource.Name, minReplicas, kubeResource.Namespace)
 	} else {
 		return fmt.Errorf("unsupported wait precondition type: %s", kubeResource.Type)
 	}

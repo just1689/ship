@@ -42,6 +42,11 @@ func WaitDaemonSetReady(resourceName string, minNumberReady int, namespace strin
 	waitResourceReady(resourceName, "daemonset", "numberReady", minNumberReady, namespace)
 }
 
+// WaitStatefulSetReady blocks until the specified statefulset has the required number of pods ready
+func WaitStatefulSetReady(resourceName string, minNumberReady int, namespace string) {
+	waitResourceReady(resourceName, "statefulset", "readyReplicas", minNumberReady, namespace)
+}
+
 // WaitPodCompleted blocks until the specified pod is in the Succeeded phase
 func WaitPodCompleted(podName string, namespace string) {
 	fmt.Printf("Waiting for pod to finish running: %s\n", podName)

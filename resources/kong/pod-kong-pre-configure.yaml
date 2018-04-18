@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kong-pre-configure
+spec:
+  restartPolicy: Never
+  containers:
+  - name: kong-migrate
+    image: kong:0.13.0
+    env:
+      - name: KONG_DATABASE
+        value: cassandra
+      - name: KONG_CASSANDRA_CONTACT_POINTS
+        value: kong-cassandra.infra.svc.cluster.local
+      - name: KONG_CASSANDRA_KEYSPACE
+        value: inggw_kong
+      - name: KONG_CASSANDRA_REPL_FACTOR
+        value: "2"
+      - name: KONG_DB_UPDATE_PROPAGATION
+        value: "10"
+      - name: KONG_CASSANDRA_SCHEMA_CONSENSUS_TIMEOUT
+        value: "25000"
+    command: [ "/bin/sh", "-c", "KONG_NGINX_DAEMON='off' kong migrations up" ]
