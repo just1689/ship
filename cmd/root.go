@@ -28,29 +28,32 @@ import (
 // ShipComponent contains the information necessary to install components into SHIP
 type ShipComponent struct {
 	Chart                helm.Chart
-	PreInstallResources []PreInstallResource
+	PreInstallResources  []PreInstallResource
 	PostInstallResources []PostInstallResource
 }
 
+// PreconditionReadySpec describes a resource to wait upon and the condition(s) of waiting
 type PreconditionReadySpec struct {
-	Resource       KubernetesResource
-	MinReplicas    int
+	Resource    KubernetesResource
+	MinReplicas int
 }
 
 // PreInstallResource contains the information necessary to execute a pre chart installation
 // one-time manifest (e.g. configuration pod)
 type PreInstallResource struct {
-	PreconditionReady PreconditionReadySpec
-	ManifestPath      string
-	WaitForDone       KubernetesResource
+	PreconditionReady   PreconditionReadySpec
+	ManifestPath        string
+	WaitForDone         KubernetesResource
+	PersistentAfterWait bool
 }
 
 // PostInstallResource contains the information necessary to execute a post chart installation
 // one-time manifest (e.g. configuration pod)
 type PostInstallResource struct {
-	PreconditionReady PreconditionReadySpec
-	ManifestPath      string
-	WaitForDone       KubernetesResource
+	PreconditionReady   PreconditionReadySpec
+	ManifestPath        string
+	WaitForDone         KubernetesResource
+	PersistentAfterWait bool
 }
 
 // KubernetesResource uniquely identifies a Kubernetes resource
@@ -87,38 +90,55 @@ func Execute() {
 }
 
 var shipComponents = []ShipComponent{
-  //{Chart: helm.Chart{ChartPath: "stable/heapster", Namespace: "kube-system", ReleaseName: "sysmetric",
-  //  Overrides: []string{"rbac.create=true"}}},
+	//{Chart: helm.Chart{ChartPath: "stable/heapster", Namespace: "kube-system", ReleaseName: "sysmetric",
+	//  Overrides: []string{"rbac.create=true"}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-cassandra", Namespace: "infra", ReleaseName: "inggwdb",
-		Overrides: []string{"clusterProfile=production"}}},
+		Overrides: []helm.ValueOverride{{Override: "clusterProfile=production"}}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/nexus", Namespace: "infra", ReleaseName: "repo"}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/prometheus", Namespace: "infra", ReleaseName: "metricdb"}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/zipkin", Namespace: "infra", ReleaseName: "tracing",
-		Overrides: []string{"ingress.enabled=true", "ingress.host=zipkin.${domain}", "ingress.class=kong",
-			"ingress.path=/"}}},
+		Overrides: []helm.ValueOverride{{Override: "ingress.enabled=true"}, {Override: "ingress.host=zipkin.${domain}"}, {Override: "ingress.class=kong"},
+			{Override: "ingress.path=/"}}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/jenkins", Namespace: "infra", ReleaseName: "cicd",
-		Overrides: []string{"Master.HostName=jenkins.${domain}"}}},
+		Overrides: []helm.ValueOverride{
+			{Override: "Master.HostName=jenkins.${domain}"},
+			{Override: "Master.Ingress.Annotations.kubernetes\\.io/ingress\\.class=kong"},
+			{Override: "Master.Ingress.TLS[0].secretName=cicd-jenkins-tls"},
+			{Override: "Master.Ingress.TLS[0].hosts[0]=jenkins.${domain}"}}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kibana", Namespace: "infra", ReleaseName: "logviz",
-		Overrides: []string{"ingress.enabled=true", "ingress.host=kibana.${domain}", "ingress.class=kong", "ingress.path=/"}}},
+		Overrides: []helm.ValueOverride{
+			{Override: "ingress.enabled=true"},
+			{Override: "ingress.host=kibana.${domain}"},
+			{Override: "ingress.class=kong"},
+			{Override: "ingress.path=/"}}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/fluent-bit",
-		Namespace: "infra", ReleaseName: "logcollect", Overrides: []string{}}},
-	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/elasticsearch", Namespace: "infra", ReleaseName: "logdb", Overrides: []string{"ClusterProfile=production"}}},
+		Namespace: "infra", ReleaseName: "logcollect"}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/elasticsearch", Namespace: "infra", ReleaseName: "logdb", Overrides: []helm.ValueOverride{
+		{Override: "ClusterProfile=production"}}}},
 	{Chart: helm.Chart{ChartPath: "stable/grafana", Namespace: "infra", ReleaseName: "metricviz",
-		Overrides:  []string{"server.ingress.enabled=true", "server.ingress.hosts={grafana.${domain}}"},
+		Overrides: []helm.ValueOverride{
+			{Override: "ingress.enabled=true"},
+			{Override: "ingress.hosts={grafana.${domain}}"},
+			{Override: "ingress.tls[0].hosts={grafana.${domain}}"}},
 		ValuesPath: "resources/grafana/values.yaml"}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong", Namespace: "infra", ReleaseName: "inggw",
-		Overrides: []string{"clusterProfile=local", "HostPort=true"}},
+		Overrides: []helm.ValueOverride{{Override: "clusterProfile=local"}, {Override: "HostPort=true"}}},
 		PreInstallResources: []PreInstallResource{
 			{
-				PreconditionReady: PreconditionReadySpec{Resource: KubernetesResource {Name: "inggwdb-kong-cassandr", Type: "statefulset", Namespace: "infra"}, MinReplicas: 2},
-				ManifestPath: "resources/kong/pod-kong-pre-configure.yaml",
-				WaitForDone:  KubernetesResource{Name: "kong-pre-configure", Type: "pod", Namespace: "infra"}}},
+				PreconditionReady:   PreconditionReadySpec{Resource: KubernetesResource{Name: "inggwdb-kong-cassandr", Type: "statefulset", Namespace: "infra"}, MinReplicas: 2},
+				ManifestPath:        "resources/kong/pod-kong-pre-configure.yaml",
+				WaitForDone:         KubernetesResource{Name: "kong-pre-configure", Type: "pod", Namespace: "infra"},
+				PersistentAfterWait: false}},
 		PostInstallResources: []PostInstallResource{
 			{
-				PreconditionReady: PreconditionReadySpec{Resource:KubernetesResource{Name: "inggw-kong", Type: "daemonset", Namespace: "infra"}, MinReplicas: 1},
-				ManifestPath: "resources/kong/pod-kong-configure.yaml",
-				WaitForDone:  KubernetesResource{Name: "kong-configure", Type: "pod", Namespace: "infra"}}}},
-	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-ingress-controller", Namespace: "infra", ReleaseName: "ingcontrol"}}}
+				PreconditionReady:   PreconditionReadySpec{Resource: KubernetesResource{Name: "inggw-kong", Type: "daemonset", Namespace: "infra"}, MinReplicas: 1},
+				ManifestPath:        "resources/kong/pod-kong-configure.yaml",
+				WaitForDone:         KubernetesResource{Name: "kong-configure", Type: "pod", Namespace: "infra"},
+				PersistentAfterWait: false}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-ingress-controller", Namespace: "infra", ReleaseName: "ingcontrol"}},
+	{Chart: helm.Chart{ChartPath: "stable/cert-manager", Namespace: "infra", ReleaseName: "certman", Overrides: []helm.ValueOverride{{Override: "ingressShim.extraArgs={--default-issuer-name=letsencrypt-prod,--default-issuer-kind=ClusterIssuer}"}}},
+		PostInstallResources: []PostInstallResource{{ManifestPath: "resources/cert-manager/clusterissuer-letsencrypt-prod.yaml", PersistentAfterWait: true}}},
+}
 
 func init() {
 	cobra.OnInitialize(initConfig)

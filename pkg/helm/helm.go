@@ -11,12 +11,18 @@ var (
 	cmdName = "helm"
 )
 
+// ValueOverride describes a helm override
+type ValueOverride struct {
+	Override string
+	Type     string
+}
+
 // Chart contains the information needed to install a helm chart
 type Chart struct {
 	ChartPath   string
 	Namespace   string
 	ReleaseName string
-	Overrides   []string
+	Overrides   []ValueOverride
 	ValuesPath  string
 }
 
@@ -36,18 +42,18 @@ func GetHelmReleases() []string {
 	return releases
 }
 
-// RemoveReleases removes the releases created by the given charts
-func RemoveReleases(sourceCharts *[]Chart) {
+// RemoveReleases removes the provided releases if they are present
+func RemoveReleases(releases []string) {
 	currentReleases := GetHelmReleases()
 	currentReleasesMap := make(map[string]struct{})
 	for _, currentRelease := range currentReleases {
 		currentReleasesMap[currentRelease] = struct{}{}
 	}
 
-	for _, sourceChart := range *sourceCharts {
-		if _, found := currentReleasesMap[sourceChart.ReleaseName]; found {
-			fmt.Println(fmt.Sprintf("Removing release: %v", sourceChart.ReleaseName))
-			removeHelmRelease(sourceChart.ReleaseName)
+	for _, release := range releases {
+		if _, found := currentReleasesMap[release]; found {
+			fmt.Println(fmt.Sprintf("Removing release: %v", release))
+			removeHelmRelease(release)
 		}
 	}
 }
@@ -69,8 +75,14 @@ func InstallChart(chart *Chart, domain string) {
 	fmt.Printf("Installing chart: %s\n", chart.ChartPath)
 	args := []string{"install", chart.ChartPath, "-n", chart.ReleaseName, "--namespace", chart.Namespace}
 
-	for _, override := range chart.Overrides {
-		args = append(args, "--set", strings.Replace(override, "${domain}", domain, -1))
+	for _, valueOverride := range chart.Overrides {
+		var helmFlag string
+		if valueOverride.Type == "string" {
+			helmFlag = "--set-string"
+		} else {
+			helmFlag = "--set"
+		}
+		args = append(args, helmFlag, strings.Replace(valueOverride.Override, "${domain}", domain, -1))
 	}
 
 	if chart.ValuesPath != "" {

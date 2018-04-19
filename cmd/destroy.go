@@ -25,10 +25,16 @@ var destroyCmd = &cobra.Command{
 	Short: "Removes components installed by ship",
 	Long:  `This will remove all helm releases with release names that match the release names used by the ship installation`,
 	Run: func(cmd *cobra.Command, args []string) {
-		var charts []helm.Chart
-		viper.UnmarshalKey("charts", &charts)
+		var shipComponents []ShipComponent
+		viper.UnmarshalKey("components", &shipComponents)
 
-		helm.RemoveReleases(&charts)
+		releases := []string{}
+
+		for _, shipComponent := range shipComponents {
+			releases = append(releases, shipComponent.Chart.ReleaseName)
+		}
+
+		helm.RemoveReleases(releases)
 	},
 }
 

@@ -87,33 +87,37 @@ func installComponents(components *[]ShipComponent, domain string) {
 						continue
 					}
 				}
+
+				if !preInstallSpec.PersistentAfterWait {
+					kubectl.Delete(preInstallSpec.ManifestPath, "infra")
+				}
 			}
 			helm.InstallChart(&component.Chart, domain)
-		}
 
-		for _, postInstallSpec := range component.PostInstallResources {
-			if postInstallSpec.PreconditionReady.Resource != (KubernetesResource{}) {
-				if err := waitForResourceReady(&postInstallSpec.PreconditionReady.Resource, postInstallSpec.PreconditionReady.MinReplicas); err != nil {
-					fmt.Printf("Error encountered: %v\n", err)
-					errors = append(errors, err)
-					continue
+			for _, postInstallSpec := range component.PostInstallResources {
+				if postInstallSpec.PreconditionReady.Resource != (KubernetesResource{}) {
+					if err := waitForResourceReady(&postInstallSpec.PreconditionReady.Resource, postInstallSpec.PreconditionReady.MinReplicas); err != nil {
+						fmt.Printf("Error encountered: %v\n", err)
+						errors = append(errors, err)
+						continue
+					}
+				}
+
+				// TODO: Fix hardcoded infra namespace
+				kubectl.Create(postInstallSpec.ManifestPath, "infra")
+
+				if postInstallSpec.WaitForDone != (KubernetesResource{}) {
+					if err := waitForResourceCompleted(&postInstallSpec.WaitForDone); err != nil {
+						fmt.Printf("Error encountered: %v\n", err)
+						errors = append(errors, err)
+						continue
+					}
+				}
+
+				if !postInstallSpec.PersistentAfterWait {
+					kubectl.Delete(postInstallSpec.ManifestPath, "infra")
 				}
 			}
-
-			// TODO: Fix hardcoded infra namespace
-			kubectl.Create(postInstallSpec.ManifestPath, "infra")
-
-			if postInstallSpec.WaitForDone != (KubernetesResource{}) {
-				if err := waitForResourceCompleted(&postInstallSpec.WaitForDone); err != nil {
-					fmt.Printf("Error encountered: %v\n", err)
-					errors = append(errors, err)
-					continue
-				}
-			}
-		}
-
-		for _, postInstallResource := range component.PostInstallResources {
-			kubectl.Delete(postInstallResource.ManifestPath, "infra")
 		}
 	}
 
