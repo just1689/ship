@@ -3,7 +3,7 @@ kind: Pod
 metadata:
   name: kong-configure
 spec:
-  restartPolicy: Never
+  restartPolicy: OnFailure
   containers:
   - name: kong-configure
     image: yauritux/busybox-curl

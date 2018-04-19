@@ -3,7 +3,7 @@ kind: Pod
 metadata:
   name: kong-pre-configure
 spec:
-  restartPolicy: Never
+  restartPolicy: OnFailure
   containers:
   - name: kong-migrate
     image: kong:0.13.0
