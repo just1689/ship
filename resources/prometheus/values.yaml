@@ -288,11 +288,11 @@ kubeStateMetrics:
   ##
   resources:
     limits:
-      cpu: 10m
-      memory: 50Mi
+      cpu: 100m
+      memory: 256Mi
     requests:
       cpu: 10m
-      memory: 50Mi
+      memory: 256Mi
 
   service:
     annotations:
@@ -556,10 +556,10 @@ server:
   resources:
     limits:
       cpu: 500m
-      memory: 512Mi
+      memory: 3Gi
     requests:
       cpu: 500m
-      memory: 512Mi
+      memory: 3Gi
 
   service:
     annotations: {}
