@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-prometheus-datasource
+  labels:
+     grafana_datasource: "true"
+data:
+    prometheus.yaml: |-
+      apiVersion: 1
+      datasources:
+      - name: Prometheus
+        type: prometheus
+        url: http://metricdb-prometheus-server.infra
+        access: proxy
+        isDefault: true

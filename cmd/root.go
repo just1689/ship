@@ -90,13 +90,13 @@ func Execute() {
 }
 
 var shipComponents = []ShipComponent{
-	//{Chart: helm.Chart{ChartPath: "stable/heapster", Namespace: "kube-system", ReleaseName: "sysmetric",
-	//  Overrides: []string{"rbac.create=true"}}},
-	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-cassandra", Namespace: "infra", ReleaseName: "inggwdb",
-		Overrides: []helm.ValueOverride{{Override: "clusterProfile=production"}}}},
+	{Chart: helm.Chart{ChartPath: "stable/heapster", Namespace: "kube-system", ReleaseName: "sysmetric",
+  Overrides: []helm.ValueOverride{{Override: "rbac.create=true"}}}},
+	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/postgresql", Namespace: "infra", ReleaseName: "inggwdb",
+		Overrides: []helm.ValueOverride{{Override: "fullnameOverride=kong-postgres"},{Override: "postgresUser=kong"},{Override: "postgresDatabase=kong"}}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/nexus", Namespace: "infra", ReleaseName: "repo"}},
 	{Chart: helm.Chart{ChartPath: "stable/prometheus", Namespace: "infra", ReleaseName: "metricdb",
-    ValuesPath: "resources/prometheus/values.yaml"}},
+		ValuesPath: "resources/prometheus/values.yaml"}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/zipkin", Namespace: "infra", ReleaseName: "tracing",
 		Overrides: []helm.ValueOverride{{Override: "ingress.enabled=true"}, {Override: "ingress.host=zipkin.${domain}"}, {Override: "ingress.class=kong"},
 			{Override: "ingress.path=/"}}}},
@@ -118,15 +118,26 @@ var shipComponents = []ShipComponent{
 		{Override: "ClusterProfile=production"}}}},
 	{Chart: helm.Chart{ChartPath: "stable/grafana", Namespace: "infra", ReleaseName: "metricviz",
 		Overrides: []helm.ValueOverride{
+			{Override: "sidecar.dashboards.enabled=true"},
+			{Override: "sidecar.dashboards.label=grafana_dashboard"},
+			{Override: "sidecar.datasources.enabled=true"},
+			{Override: "sidecar.datasources.label=grafana_datasource"},
 			{Override: "ingress.enabled=true"},
 			{Override: "ingress.hosts={grafana.${domain}}"},
 			{Override: "ingress.tls[0].hosts={grafana.${domain}}"}},
-		ValuesPath: "resources/grafana/values.yaml"}},
+		ValuesPath: "resources/grafana/values.yaml"},
+		PreInstallResources: []PreInstallResource{
+			{ManifestPath: "resources/grafana/datasource-elasticsearch.yaml", PersistentAfterWait: true},
+			{ManifestPath: "resources/grafana/datasource-prometheus.yaml", PersistentAfterWait: true},
+			{ManifestPath: "resources/grafana/dashboard-cluster-alarms.yaml", PersistentAfterWait: true},
+			{ManifestPath: "resources/grafana/dashboard-ingress.yaml", PersistentAfterWait: true},
+			{ManifestPath: "resources/grafana/dashboard-kubernetes.yaml", PersistentAfterWait: true},
+			{ManifestPath: "resources/grafana/dashboard-pod-alarms.yaml", PersistentAfterWait: true}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong", Namespace: "infra", ReleaseName: "inggw",
-		Overrides: []helm.ValueOverride{{Override: "clusterProfile=local"}, {Override: "HostPort=true"}}},
+		Overrides: []helm.ValueOverride{{Override: "ProxyService.Type=ClusterIP"}, {Override: "IstioSidecar.enabled=false"},{Override: "HostPort=true"}}},
 		PreInstallResources: []PreInstallResource{
 			{
-				PreconditionReady:   PreconditionReadySpec{Resource: KubernetesResource{Name: "inggwdb-kong-cassandr", Type: "statefulset", Namespace: "infra"}, MinReplicas: 2},
+				PreconditionReady:   PreconditionReadySpec{Resource: KubernetesResource{Name: "kong-postgres", Type: "deployment", Namespace: "infra"}, MinReplicas: 1},
 				ManifestPath:        "resources/kong/pod-kong-pre-configure.yaml",
 				WaitForDone:         KubernetesResource{Name: "kong-pre-configure", Type: "pod", Namespace: "infra"},
 				PersistentAfterWait: false}},
@@ -137,7 +148,7 @@ var shipComponents = []ShipComponent{
 				WaitForDone:         KubernetesResource{Name: "kong-configure", Type: "pod", Namespace: "infra"},
 				PersistentAfterWait: false}}},
 	{Chart: helm.Chart{ChartPath: "sprinthive-dev-charts/kong-ingress-controller", Namespace: "infra", ReleaseName: "ingcontrol"}},
-	{Chart: helm.Chart{ChartPath: "stable/cert-manager", Namespace: "infra", ReleaseName: "certman", Overrides: []helm.ValueOverride{{Override: "ingressShim.extraArgs={--default-issuer-name=letsencrypt-prod,--default-issuer-kind=ClusterIssuer}"}}},
+	{Chart: helm.Chart{ChartPath: "stable/cert-manager", Namespace: "infra", ReleaseName: "certman", Overrides: []helm.ValueOverride{{Override: "ingressShim.defaultIssuerName=letsencrypt-prod"}, {Override: "ingressShim.defaultIssuerKind=ClusterIssuer"}}},
 		PostInstallResources: []PostInstallResource{{ManifestPath: "resources/cert-manager/clusterissuer-letsencrypt-prod.yaml", PersistentAfterWait: true}}},
 }
 
