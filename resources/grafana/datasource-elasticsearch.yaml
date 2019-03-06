@@ -3,18 +3,18 @@ kind: ConfigMap
 metadata:
   name: grafana-elasticsearch-datasource
   labels:
-     grafana_datasource: "true"
+    grafana_datasource: "true"
 data:
-    elasticsearch.yaml: |-
-      apiVersion: 1
-      datasources:
-      - name: ES Logs
-        type: elasticsearch
-        url: http://elasticsearch.infra:9200
-        database: "[logstash-]YYYY.MM.DD"
-        access: proxy
-        isDefault: false
-        jsonData:
-         esVersion: 5,
-         interval: Daily
-         timeField: "@timestamp"
+  elasticsearch.yaml: |-
+    apiVersion: 1
+    datasources:
+    - name: ES Logs
+      type: elasticsearch
+      url: http://elasticsearch.infra:9200
+      database: "[app_logs-]YYYY.MM.DD"
+      access: proxy
+      isDefault: false
+      jsonData:
+       esVersion: 56
+       interval: Daily
+       timeField: "@fb_timestamp"

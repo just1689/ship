@@ -367,7 +367,7 @@ data:
                   "tableColumn": "",
                   "targets": [
                     {
-                      "expr": "sum (container_fs_usage_bytes{device=~\"^/dev/xvda.?$\",id=\"/\",kubernetes_io_hostname=~\"^$Node$\"}) / sum (container_fs_limit_bytes{device=~\"^/dev/xvda.?$\",id=\"/\",kubernetes_io_hostname=~\"^$Node$\"}) * 100",
+                      "expr": "sum (container_fs_usage_bytes{device=~\"^/dev/.{1,2}da.?$\",id=\"/\",kubernetes_io_hostname=~\"^$Node$\"}) / sum (container_fs_limit_bytes{device=~\"^/dev/.{1,2}da.?$\",id=\"/\",kubernetes_io_hostname=~\"^$Node$\"}) * 100",
                       "format": "time_series",
                       "interval": "10s",
                       "intervalFactor": 1,
@@ -771,7 +771,7 @@ data:
                   "tableColumn": "",
                   "targets": [
                     {
-                      "expr": "sum (container_fs_usage_bytes{device=~\"^/dev/xvda.?$\",id=\"/\",kubernetes_io_hostname=~\"^$Node$\"})",
+                      "expr": "sum (container_fs_usage_bytes{device=~\"^/dev/.{1,2}da.?$\",id=\"/\",kubernetes_io_hostname=~\"^$Node$\"})",
                       "format": "time_series",
                       "interval": "10s",
                       "intervalFactor": 1,
@@ -852,7 +852,7 @@ data:
                   "tableColumn": "",
                   "targets": [
                     {
-                      "expr": "sum (container_fs_limit_bytes{device=~\"^/dev/xvda.?$\",id=\"/\", kubernetes_io_hostname=~\"^$Node$\"})",
+                      "expr": "sum (container_fs_limit_bytes{device=~\"^/dev/.{1,2}da.?$\",id=\"/\", kubernetes_io_hostname=~\"^$Node$\"})",
                       "format": "time_series",
                       "interval": "10s",
                       "intervalFactor": 1,
@@ -2184,5 +2184,5 @@ data:
           },
           "timezone": "browser",
           "title": "Kubernetes Cluster",
-          "version": 1
+          "version": 2
         }
