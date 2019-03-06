@@ -10,8 +10,8 @@ replicas: 1
 deploymentStrategy: RollingUpdate
 
 image:
-  repository: bitnami/grafana
-  tag: latest
+  repository: grafana/grafana
+  tag: 6.0.0
   pullPolicy: IfNotPresent
 
   ## Optionally specify an array of imagePullSecrets.
@@ -239,7 +239,7 @@ smtp:
 ## Sidecars that collect the configmaps with specified label and stores the included files them into the respective folders
 ## Requires at least Grafana 5 to work and can't be used together with parameters dashboardProviders, datasources and dashboards
 sidecar:
-  image: kiwigrid/k8s-sidecar:0.0.3
+  image: kiwigrid/k8s-sidecar:0.0.11
   imagePullPolicy: IfNotPresent
   resources:
 #   limits:
