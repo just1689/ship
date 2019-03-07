@@ -347,7 +347,7 @@ data:
         "dashes": false,
         "datasource": "Prometheus",
         "decimals": 2,
-        "editable": true,
+        "editable": false,
         "error": false,
         "fill": 1,
         "grid": {},
@@ -663,7 +663,7 @@ data:
         "steppedLine": false,
         "targets": [
         {
-          "expr": "sum(kube_node_status_ready{condition!=\"true\"})",
+          "expr": "sum(kube_node_status_condition{condition=\"Ready\", status=\"false\"})",
           "format": "time_series",
           "intervalFactor": 2,
           "metric": "kube_node_status_ready",
