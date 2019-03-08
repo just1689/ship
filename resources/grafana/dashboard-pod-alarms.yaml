@@ -98,11 +98,11 @@ data:
                   "steppedLine": false,
                   "targets": [
                     {
-                      "expr": "increase(kube_pod_container_status_restarts[5m])",
+                      "expr": "increase(kube_pod_container_status_restarts_total[5m])",
                       "format": "time_series",
                       "intervalFactor": 2,
                       "legendFormat": "{{container}}",
-                      "metric": "kube_pod_container_status_restarts",
+                      "metric": "kube_pod_container_status_restarts_total",
                       "refId": "A",
                       "step": 30
                     }
