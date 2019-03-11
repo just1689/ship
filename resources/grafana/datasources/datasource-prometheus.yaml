@@ -10,6 +10,6 @@ data:
       datasources:
       - name: Prometheus
         type: prometheus
-        url: http://metricdb-prometheus-server.infra
+        url: http://promop-prometheus-operator-prometheus.infra:9090
         access: proxy
         isDefault: true
