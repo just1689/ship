@@ -20,5 +20,5 @@ spec:
       valueFrom:
         secretKeyRef:
           name: kong-postgres
-          key: postgres-password
+          key: postgresql-password
     command: [ "/bin/sh", "-c", "KONG_NGINX_DAEMON='off' kong migrations up" ]

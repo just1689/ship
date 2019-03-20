@@ -1,0 +1,3 @@
+fullnameOverride: kong-postgres
+postgresqlDatabase: kong
+postgresqlUsername: kong
