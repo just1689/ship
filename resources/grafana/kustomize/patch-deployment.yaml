@@ -1,0 +1,34 @@
+apiVersion: apps/v1beta2
+kind: Deployment
+metadata:
+  name: metricviz-grafana
+spec:
+  template:
+    spec:
+      imagePullSecrets:
+        - name: honeycomb-gcr-ro
+      containers:
+        - name: saml-proxy
+          image: "eu.gcr.io/sh-honeycomb/saml-proxy:latest"
+          imagePullPolicy: Always
+          ports:
+            - name: proxy
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: saml-proxy-config
+              mountPath: "/config"
+        - name: grafana
+          ports:
+            - name: service
+              containerPort: 80
+              protocol: TCP
+              $patch: delete
+            - name: grafana
+              containerPort: 3000
+              protocol: TCP
+              $patch: delete
+      volumes:
+        - name: saml-proxy-config
+          secret:
+            secretName: grafana-saml-proxy

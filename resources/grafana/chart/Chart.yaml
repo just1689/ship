@@ -1,0 +1,5 @@
+name: sprinthive-grafana
+version: 0.0.1
+description: SprintHive Grafana chart that uses the stable chart as base
+keywords:
+  - grafana

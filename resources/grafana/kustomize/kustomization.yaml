@@ -1,0 +1,6 @@
+resources:
+- base.yaml
+patches:
+- patch-deployment.yaml
+- patch-service.yaml
+

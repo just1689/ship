@@ -3,6 +3,14 @@ ingress:
   annotations:
     kubernetes.io/tls-acme: "true"
 
+grafana.ini:
+  auth.proxy:
+    enabled: true
+    header_name: X-AUTH-EMAIL
+    header_property: email
+    auto_sign_up: true
+    headers: "Name:X-AUTH-NAME Email:X-AUTH-EMAIL"
+
 resources:
   limits:
     cpu: 100m

@@ -1,0 +1,31 @@
+grafana:
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/tls-acme: "true"
+
+  grafana.ini:
+    auth.proxy:
+      enabled: true
+      header_name: X-AUTH-EMAIL
+      header_property: email
+      auto_sign_up: true
+      headers: "Name:X-AUTH-NAME Email:X-AUTH-EMAIL"
+
+  resources:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  persistence:
+    enabled: true
+    size: 1Gi
+
+  sidecar:
+    dashboards:
+      enabled: true
+    datasources:
+      enabled: true
