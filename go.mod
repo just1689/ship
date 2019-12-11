@@ -1,9 +1,8 @@
-module github.com/sprinthive/ship
+module github.com/SprintHive/ship
 
 go 1.13
 
 require (
-	github.com/SprintHive/ship v0.0.0-20171220095240-a8735788ce9c
 	github.com/fsnotify/fsnotify v1.4.2 // indirect
 	github.com/hashicorp/hcl v0.0.0-20171017181929-23c074d0eceb // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
